@@ -29,8 +29,8 @@ Until then, this tool enables any validator to start sharing voluntarily.
 
 ### Anti-Gaming Protection
 
-- **Full month requirement** — Delegators must be present in both the start-of-month and end-of-month snapshots
-- **Minimum stake used** — If a delegator decreases their stake mid-month, only the lower amount counts
+- **Full month requirement** — Delegators must be present in every daily snapshot between start and end of month. Leave mid-month and come back? Not eligible.
+- **Minimum stake used** — The lowest stake across all daily snapshots is used for payout calculation. A mid-month dip counts.
 - **Minimum threshold** — Configurable minimum stake to be eligible (default: 500 POL)
 - **Daily snapshots** — Continuous monitoring prevents flash staking (stake day before snapshot, unstake day after)
 

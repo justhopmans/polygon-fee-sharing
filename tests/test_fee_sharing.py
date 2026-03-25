@@ -180,6 +180,74 @@ class TestDatabaseSetup(unittest.TestCase):
         self.assertNotIn("0xsmall", eligible)
 
 
+class TestFullMonthPresence(unittest.TestCase):
+    """Test that delegators must be present in ALL snapshots."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.orig_db = fee_sharing.DB_PATH
+        self.orig_db_dir = fee_sharing.DB_DIR
+        fee_sharing.DB_DIR = self.tmpdir
+        fee_sharing.DB_PATH = os.path.join(self.tmpdir, "test.db")
+
+    def tearDown(self):
+        fee_sharing.DB_PATH = self.orig_db
+        fee_sharing.DB_DIR = self.orig_db_dir
+
+    def _insert_snapshot(self, conn, date, delegators):
+        for addr, stake in delegators.items():
+            conn.execute(
+                "INSERT INTO snapshots VALUES (NULL, 118, ?, ?, ?, ?)",
+                (addr, stake, f"{date}T00:00:00+00:00", date),
+            )
+        conn.commit()
+
+    def test_mid_month_departure_excluded(self):
+        """A delegator who leaves mid-month and comes back should be excluded."""
+        conn = fee_sharing.get_db()
+
+        # April 1: everyone present
+        self._insert_snapshot(conn, "2026-04-01", {
+            "0xstayer": 10000.0,
+            "0xleaver": 5000.0,
+        })
+        # April 15: leaver is gone
+        self._insert_snapshot(conn, "2026-04-15", {
+            "0xstayer": 10000.0,
+        })
+        # May 1: leaver comes back
+        self._insert_snapshot(conn, "2026-05-01", {
+            "0xstayer": 10000.0,
+            "0xleaver": 5000.0,
+        })
+
+        eligible, stats, all_dates, error = fee_sharing._calculate_eligible(
+            conn, 118, "2026-04-01", "2026-05-01", min_stake=100
+        )
+        conn.close()
+
+        self.assertIsNone(error)
+        self.assertEqual(len(all_dates), 3)
+        self.assertIn("0xstayer", eligible)
+        self.assertNotIn("0xleaver", eligible)
+
+    def test_minimum_stake_across_all_snapshots(self):
+        """Min stake should be the lowest across ALL snapshots, not just first and last."""
+        conn = fee_sharing.get_db()
+
+        self._insert_snapshot(conn, "2026-04-01", {"0xaddr": 10000.0})
+        self._insert_snapshot(conn, "2026-04-15", {"0xaddr": 3000.0})   # dip mid-month
+        self._insert_snapshot(conn, "2026-05-01", {"0xaddr": 10000.0})
+
+        eligible, stats, all_dates, error = fee_sharing._calculate_eligible(
+            conn, 118, "2026-04-01", "2026-05-01", min_stake=100
+        )
+        conn.close()
+
+        self.assertIsNone(error)
+        self.assertEqual(eligible["0xaddr"]["min_stake"], 3000.0)  # mid-month dip used
+
+
 class TestDistributionMath(unittest.TestCase):
     """Test that distribution math is correct."""
 

@@ -242,11 +242,89 @@ def _get_share_pct(config, pool_size):
     return 0
 
 
+def _get_snapshot_dates_in_range(conn, validator_id, date_from, date_to):
+    """Get all snapshot dates for a validator between two dates (inclusive)."""
+    rows = conn.execute(
+        """SELECT DISTINCT snapshot_date FROM snapshots
+           WHERE validator_id = ? AND snapshot_date >= ? AND snapshot_date <= ?
+           ORDER BY snapshot_date""",
+        (validator_id, date_from, date_to),
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
+def _calculate_eligible(conn, validator_id, date_from, date_to, min_stake):
+    """Calculate eligible delegators across all snapshots in a date range.
+
+    A delegator must be present in EVERY snapshot between date_from and date_to.
+    Their payout stake is the MINIMUM across all snapshots (anti-gaming).
+    """
+    snap_from = _get_closest_snapshot(conn, validator_id, date_from)
+    snap_to = _get_closest_snapshot(conn, validator_id, date_to)
+
+    if not snap_from or not snap_to:
+        return None, None, None, "Not enough snapshots found. Take snapshots first."
+
+    if snap_from == snap_to:
+        return None, None, None, f"Both dates resolve to the same snapshot ({snap_from}). Need two different snapshots."
+
+    # Get all snapshot dates in the range
+    all_dates = _get_snapshot_dates_in_range(conn, validator_id, snap_from, snap_to)
+    if len(all_dates) < 2:
+        return None, None, None, "Need at least 2 snapshots in the date range."
+
+    # Load all snapshots
+    all_snapshots = {}
+    for date in all_dates:
+        all_snapshots[date] = _get_snapshot_data(conn, validator_id, date)
+
+    # Find delegators present in ALL snapshots
+    addresses_per_snapshot = [set(snap.keys()) for snap in all_snapshots.values()]
+    present_in_all = set.intersection(*addresses_per_snapshot)
+
+    # Get all unique addresses across all snapshots
+    all_addresses = set.union(*addresses_per_snapshot)
+
+    # Calculate eligible: present in all snapshots, min stake met
+    eligible = {}
+    not_in_all = 0
+    below_min = 0
+
+    for addr in all_addresses:
+        if addr not in present_in_all:
+            not_in_all += 1
+            continue
+        # Minimum stake across ALL snapshots
+        min_s = min(all_snapshots[date][addr] for date in all_dates)
+        if min_s < min_stake:
+            below_min += 1
+            continue
+        eligible[addr] = {
+            "stake_from": all_snapshots[all_dates[0]][addr],
+            "stake_to": all_snapshots[all_dates[-1]][addr],
+            "min_stake": min_s,
+        }
+
+    # Pool sizes: minimum across all snapshots
+    pool_sizes = [sum(snap.values()) for snap in all_snapshots.values()]
+    min_pool = min(pool_sizes)
+
+    stats = {
+        "snap_from": snap_from,
+        "snap_to": snap_to,
+        "snapshot_count": len(all_dates),
+        "not_in_all": not_in_all,
+        "below_min": below_min,
+        "min_pool": min_pool,
+    }
+
+    return eligible, stats, all_dates, None
+
+
 def cmd_compare(args):
-    """Compare two snapshots to find eligible delegators."""
+    """Compare snapshots to find eligible delegators."""
     conn = get_db()
 
-    # Determine validator_id from existing snapshots or config
     validator_id = args.validator
     if validator_id is None:
         row = conn.execute("SELECT DISTINCT validator_id FROM snapshots LIMIT 1").fetchone()
@@ -257,54 +335,21 @@ def cmd_compare(args):
             conn.close()
             raise SystemExit(1)
 
-    from_date = args.date_from
-    to_date = args.date_to
     min_stake = args.min_stake
-
-    # Find closest snapshots
-    snap_from = _get_closest_snapshot(conn, validator_id, from_date)
-    snap_to = _get_closest_snapshot(conn, validator_id, to_date)
-
-    if not snap_from or not snap_to:
-        print("Error: Not enough snapshots found. Take snapshots first.")
-        conn.close()
-        raise SystemExit(1)
-
-    if snap_from == snap_to:
-        print(f"Error: Both dates resolve to the same snapshot ({snap_from}). Need two different snapshots.")
-        conn.close()
-        raise SystemExit(1)
-
-    print(f"Comparing snapshots: {snap_from} -> {snap_to}")
-
-    data_from = _get_snapshot_data(conn, validator_id, snap_from)
-    data_to = _get_snapshot_data(conn, validator_id, snap_to)
+    eligible, stats, all_dates, error = _calculate_eligible(
+        conn, validator_id, args.date_from, args.date_to, min_stake
+    )
     conn.close()
 
-    # Find eligible delegators (present in both, min stake met)
-    eligible = {}
-    not_in_both = 0
-    below_min = 0
-
-    all_addresses = set(data_from.keys()) | set(data_to.keys())
-    for addr in all_addresses:
-        if addr not in data_from or addr not in data_to:
-            not_in_both += 1
-            continue
-        min_s = min(data_from[addr], data_to[addr])
-        if min_s < min_stake:
-            below_min += 1
-            continue
-        eligible[addr] = {
-            "stake_from": data_from[addr],
-            "stake_to": data_to[addr],
-            "min_stake": min_s,
-        }
+    if error:
+        print(f"Error: {error}")
+        raise SystemExit(1)
 
     total_eligible = sum(e["min_stake"] for e in eligible.values())
 
+    print(f"Comparing {stats['snapshot_count']} snapshots: {stats['snap_from']} -> {stats['snap_to']}")
     print(f"\nEligible: {len(eligible)} delegators, {total_eligible:,.2f} POL")
-    print(f"Excluded: {not_in_both} not in both snapshots, {below_min} below minimum ({min_stake} POL)")
+    print(f"Excluded: {stats['not_in_all']} not in all snapshots, {stats['below_min']} below minimum ({min_stake} POL)")
 
     if eligible:
         print("\nTop 10 by stake:")
@@ -320,50 +365,28 @@ def cmd_distribute(args):
     received = args.received
     from_date = args.date_from
     to_date = args.date_to
-    min_stake = config.get("min_stake_pol", 100)
+    min_stake = config.get("min_stake_pol", 500)
 
     conn = get_db()
 
-    snap_from = _get_closest_snapshot(conn, validator_id, from_date)
-    snap_to = _get_closest_snapshot(conn, validator_id, to_date)
+    eligible, stats, all_dates, error = _calculate_eligible(
+        conn, validator_id, from_date, to_date, min_stake
+    )
 
-    if not snap_from or not snap_to:
-        print("Error: Not enough snapshots found.")
+    if error:
+        print(f"Error: {error}")
         conn.close()
         raise SystemExit(1)
-
-    if snap_from == snap_to:
-        print(f"Error: Both dates resolve to the same snapshot ({snap_from}).")
-        conn.close()
-        raise SystemExit(1)
-
-    print(f"Distribution period: {snap_from} -> {snap_to}")
-
-    data_from = _get_snapshot_data(conn, validator_id, snap_from)
-    data_to = _get_snapshot_data(conn, validator_id, snap_to)
-
-    # Calculate eligible delegators
-    eligible = {}
-    for addr in set(data_from.keys()) & set(data_to.keys()):
-        min_s = min(data_from[addr], data_to[addr])
-        if min_s >= min_stake:
-            eligible[addr] = {
-                "stake_from": data_from[addr],
-                "stake_to": data_to[addr],
-                "min_stake": min_s,
-            }
 
     if not eligible:
         print("No eligible delegators found.")
         conn.close()
         raise SystemExit(1)
 
-    total_eligible_stake = sum(e["min_stake"] for e in eligible.values())
+    print(f"Distribution period: {stats['snap_from']} -> {stats['snap_to']} ({stats['snapshot_count']} snapshots)")
 
-    # Determine pool size and tier using minimum between snapshots
-    pool_from = sum(data_from.values())
-    pool_to = sum(data_to.values())
-    min_pool = min(pool_from, pool_to)
+    total_eligible_stake = sum(e["min_stake"] for e in eligible.values())
+    min_pool = stats["min_pool"]
 
     infra_cost = config.get("infra_cost_pol", 0)
     share_pct = _get_share_pct(config, min_pool)
