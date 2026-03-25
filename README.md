@@ -49,51 +49,132 @@ Validators can configure tiered sharing that increases with pool size:
 
 The tier is determined by the pool size that was maintained for the entire month.
 
-## Quick Start
+## Getting Started
 
-### Requirements
+The entire setup takes about 10 minutes. You need Python installed — that's it.
 
-- Python 3.8+
-- `requests` library
-- SQLite (included in Python)
+### Step 1: Install Python
 
-### Installation
+**Mac** — Open Terminal and run:
+```bash
+brew install python3
+```
+If you don't have Homebrew: visit [brew.sh](https://brew.sh) and follow the one-line install, then run the command above.
+
+**Windows** — Download Python from [python.org/downloads](https://www.python.org/downloads/). Run the installer and **check "Add Python to PATH"** before clicking Install.
+
+**Linux** — Python is usually preinstalled. Verify with:
+```bash
+python3 --version
+```
+
+### Step 2: Download the tool
+
+Open a terminal (Mac/Linux) or Command Prompt (Windows) and run:
 
 ```bash
 git clone https://github.com/justhopmans/polygon-fee-sharing.git
 cd polygon-fee-sharing
 pip install -r requirements.txt
-cp config.example.json config.json
-# Edit config.json with your validator ID and sharing preferences
 ```
 
-### Usage
+### Step 3: Configure for your validator
 
 ```bash
-# Take a daily snapshot for your validator
+cp config.example.json config.json
+```
+
+Open `config.json` in any text editor and change these fields:
+
+```json
+{
+  "validator_id": 118,        ← your validator ID (find it on staking.polygon.technology)
+  "validator_name": "Stakebaby",  ← your validator name
+  "infra_cost_pol": 10000,    ← monthly infrastructure cost to deduct
+  "min_stake_pol": 500,       ← minimum delegation to be eligible
+  "flat_share_pct": null      ← set a number (e.g. 30) for flat %, or leave null for tiers
+}
+```
+
+If you use `flat_share_pct`, the `sharing_tiers` are ignored. If you leave it `null`, configure the tiers to match your sharing policy.
+
+### Step 4: Take your first snapshot
+
+```bash
 python fee_sharing.py snapshot --validator 118
+```
 
-# Compare two months and find eligible delegators
-python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01 --min-stake 500
+You should see something like:
+```
+Fetching delegators for validator #118...
+Snapshot taken: 247 active delegators, 8,241,092.48 POL total
+```
 
-# Calculate distribution (reads sharing %, infra cost from config.json)
+This pulls all your current delegators from the Polygon Staking API and stores them locally. Run this every day — the more snapshots you have, the more accurate your distributions.
+
+### Step 5: Automate daily snapshots
+
+You don't want to run this manually every day. Set up a scheduled task:
+
+**Mac / Linux** — Open your crontab:
+```bash
+crontab -e
+```
+Add this line (change the path and validator ID):
+```
+5 0 * * * cd /path/to/polygon-fee-sharing && python3 fee_sharing.py snapshot --validator 118
+```
+This runs every day at 00:05 UTC.
+
+**Windows** — Open Task Scheduler, create a new task:
+- Trigger: Daily at 00:05
+- Action: Start a program
+- Program: `python`
+- Arguments: `fee_sharing.py snapshot --validator 118`
+- Start in: `C:\path\to\polygon-fee-sharing`
+
+### Step 6: Monthly distribution (5 minutes)
+
+At the end of each month, when you know how much POL you received in priority fees:
+
+```bash
+# 1. Compare start and end of month — see who's eligible
+python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01
+
+# 2. Calculate distribution — enter the POL you received
 python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
 
-# Export for disperse.app (skips payouts below 0.01 POL by default)
+# 3. Export for disperse.app
 python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
+```
 
-# Check status
+This creates a file in the `output/` folder called `disperse_YYYY-MM-DD.txt`.
+
+### Step 7: Send the payouts
+
+1. Open [disperse.app](https://disperse.app)
+2. Connect your validator wallet
+3. Select POL as the token
+4. Paste the contents of `disperse_YYYY-MM-DD.txt`
+5. Confirm and send the transaction
+
+Done. Your delegators have been paid.
+
+### Check status anytime
+
+```bash
 python fee_sharing.py status --validator 118
 ```
 
-### Automate Daily Snapshots
+### All commands
 
-Set up a cron job to take snapshots automatically:
-
-```bash
-# Run daily at 00:05 UTC
-5 0 * * * cd /path/to/polygon-fee-sharing && python fee_sharing.py snapshot --validator 118
-```
+| Command | What it does |
+|---------|-------------|
+| `snapshot --validator ID` | Take a daily snapshot of all delegators |
+| `compare --from DATE --to DATE` | Compare two snapshots, show eligible delegators |
+| `distribute --config FILE --received AMOUNT --from DATE --to DATE` | Calculate the distribution |
+| `export --config FILE --from DATE --to DATE` | Export disperse.app file |
+| `status --validator ID` | Show snapshot and distribution history |
 
 ## Data Sources
 
