@@ -80,7 +80,7 @@ python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01 --min-stake 100
 python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
 
 # Export for disperse.app
-python fee_sharing.py export --from 2026-04-01 --to 2026-05-01
+python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
 
 # Check status
 python fee_sharing.py status --validator 118

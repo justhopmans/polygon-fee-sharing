@@ -143,23 +143,17 @@ def cmd_snapshot(args):
 
     conn = get_db()
     try:
-        inserted = 0
+        # Delete existing snapshot for this validator/date to avoid stale delegators
+        conn.execute(
+            "DELETE FROM snapshots WHERE validator_id = ? AND snapshot_date = ?",
+            (validator_id, snapshot_date),
+        )
         for d in delegators:
-            try:
-                conn.execute(
-                    """INSERT INTO snapshots (validator_id, delegator_address, stake_pol, timestamp, snapshot_date)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (validator_id, d["address"], d["stake_pol"], timestamp, snapshot_date),
-                )
-                inserted += 1
-            except sqlite3.IntegrityError:
-                # Already have a snapshot for this delegator on this date
-                conn.execute(
-                    """UPDATE snapshots SET stake_pol = ?, timestamp = ?
-                       WHERE validator_id = ? AND delegator_address = ? AND snapshot_date = ?""",
-                    (d["stake_pol"], timestamp, validator_id, d["address"], snapshot_date),
-                )
-                inserted += 1
+            conn.execute(
+                """INSERT INTO snapshots (validator_id, delegator_address, stake_pol, timestamp, snapshot_date)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (validator_id, d["address"], d["stake_pol"], timestamp, snapshot_date),
+            )
         conn.commit()
     except sqlite3.OperationalError as e:
         print(f"Database error: {e}")
@@ -447,21 +441,23 @@ def cmd_distribute(args):
 
 def cmd_export(args):
     """Export the distribution for disperse.app."""
+    config = _load_config(args.config)
+    validator_id = config["validator_id"]
     conn = get_db()
 
     from_date = args.date_from
     to_date = args.date_to
 
-    # Find the latest distribution matching the period
+    # Find the latest distribution matching the period and validator
     row = conn.execute(
         """SELECT id, total_distributed, eligible_delegators FROM distributions
-           WHERE period_from = ? AND period_to = ?
+           WHERE validator_id = ? AND period_from = ? AND period_to = ?
            ORDER BY timestamp DESC LIMIT 1""",
-        (from_date, to_date),
+        (validator_id, from_date, to_date),
     ).fetchone()
 
     if not row:
-        print(f"Error: No distribution found for period {from_date} to {to_date}.")
+        print(f"Error: No distribution found for validator #{validator_id}, period {from_date} to {to_date}.")
         print("Run the distribute command first.")
         conn.close()
         raise SystemExit(1)
@@ -598,6 +594,7 @@ def main():
 
     # export
     exp_parser = subparsers.add_parser("export", help="Export for disperse.app")
+    exp_parser.add_argument("--config", default="config.json", help="Config file path (default: config.json)")
     exp_parser.add_argument("--from", dest="date_from", required=True, help="Period start date (YYYY-MM-DD)")
     exp_parser.add_argument("--to", dest="date_to", required=True, help="Period end date (YYYY-MM-DD)")
 
