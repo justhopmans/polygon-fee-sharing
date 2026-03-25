@@ -7,12 +7,13 @@ and exports a file ready for disperse.app.
 """
 
 import argparse
+import calendar
 import json
 import os
 import sqlite3
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 import requests
@@ -26,6 +27,11 @@ STAKING_API_URL = (
     "https://staking-api.polygon.technology/api/v2/validators/{validator_id}"
     "/delegators?limit=500&offset={offset}"
 )
+VALIDATOR_API_URL = (
+    "https://staking-api.polygon.technology/api/v2/validators/{validator_id}"
+)
+POLYGONSCAN_API_URL = "https://api.polygonscan.com/api"
+MULTISIG_ADDRESS = "0x7Ee41D8A25641000661B1EF5E6AE8A00400466B0"
 
 WEI_PER_POL = Decimal("1000000000000000000")
 
@@ -125,6 +131,97 @@ def fetch_delegators(validator_id):
         offset += 500
 
     return all_delegators
+
+
+def fetch_validator_signer(validator_id):
+    """Fetch the signer address for a validator from the Polygon Staking API."""
+    url = VALIDATOR_API_URL.format(validator_id=validator_id)
+    for attempt in range(3):
+        try:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            result = data.get("result", {})
+            signer = result.get("signerAddress") or result.get("signer")
+            if signer:
+                return signer.lower()
+            print(f"Error: Could not find signer address for validator #{validator_id}")
+            raise SystemExit(1)
+        except (requests.RequestException, ValueError) as e:
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                print(f"Error: Failed to fetch validator info: {e}")
+                raise SystemExit(1)
+
+
+def fetch_payouts_from_multisig(signer_address, date_from, date_to, api_key=None):
+    """Fetch POL payouts from the multisig to a validator's signer address.
+
+    Checks both normal and internal transactions on PolygonScan.
+    Returns total POL received in the date range.
+    """
+    from_ts = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+    to_ts = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) +
+                 timedelta(days=1)).timestamp()) - 1
+
+    total = Decimal("0")
+    multisig_lower = MULTISIG_ADDRESS.lower()
+    tx_hashes = set()
+
+    # Check both normal transactions and internal transactions
+    for action in ["txlist", "txlistinternal"]:
+        params = {
+            "module": "account",
+            "action": action,
+            "address": signer_address,
+            "startblock": 0,
+            "endblock": 99999999,
+            "sort": "asc",
+        }
+        if api_key:
+            params["apikey"] = api_key
+
+        for attempt in range(3):
+            try:
+                resp = requests.get(POLYGONSCAN_API_URL, params=params, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except (requests.RequestException, ValueError) as e:
+                if attempt < 2:
+                    time.sleep(5)
+                else:
+                    print(f"  Warning: Failed to fetch {action} from PolygonScan: {e}")
+                    data = {"result": []}
+
+        results = data.get("result", [])
+        if not isinstance(results, list):
+            continue
+
+        for tx in results:
+            ts = int(tx.get("timeStamp", 0))
+            if ts < from_ts or ts > to_ts:
+                continue
+            if tx.get("from", "").lower() != multisig_lower:
+                continue
+            if tx.get("to", "").lower() != signer_address.lower():
+                continue
+            if tx.get("isError", "0") == "1":
+                continue
+
+            # Avoid counting the same tx twice (normal + internal)
+            tx_hash = tx.get("hash", "")
+            if tx_hash in tx_hashes:
+                continue
+            tx_hashes.add(tx_hash)
+
+            value_wei = Decimal(tx.get("value", "0"))
+            if value_wei > 0:
+                value_pol = value_wei / WEI_PER_POL
+                total += value_pol
+
+    return float(total), len(tx_hashes)
 
 
 def cmd_snapshot(args):
@@ -602,6 +699,168 @@ def cmd_status(args):
     conn.close()
 
 
+def cmd_auto_distribute(args):
+    """Automatically distribute for the previous calendar month.
+
+    Fetches the received amount from on-chain data (multisig -> validator signer),
+    calculates the distribution, and exports the disperse file.
+    """
+    config = _load_config(args.config)
+    validator_id = config["validator_id"]
+
+    if validator_id == 0:
+        print("Error: validator_id is still 0. Edit config.json with your validator ID.")
+        raise SystemExit(1)
+
+    min_stake = config.get("min_stake_pol", 500)
+    min_payout = args.min_payout
+
+    # Determine previous calendar month
+    now = datetime.now(timezone.utc)
+    first_of_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_end = first_of_this_month
+    last_month_start = (first_of_this_month - timedelta(days=1)).replace(day=1)
+
+    date_from = last_month_start.strftime("%Y-%m-%d")
+    date_to = last_month_end.strftime("%Y-%m-%d")
+    month_name = last_month_start.strftime("%B %Y")
+
+    print(f"Auto-distribute for {month_name}")
+    print(f"Period: {date_from} -> {date_to}")
+
+    # Step 1: Look up validator signer address
+    print(f"\nLooking up signer address for validator #{validator_id}...")
+    signer = fetch_validator_signer(validator_id)
+    print(f"  Signer: {signer}")
+
+    # Step 2: Fetch payouts from multisig
+    print(f"\nFetching payouts from multisig...")
+    api_key = config.get("polygonscan_api_key")
+    received, tx_count = fetch_payouts_from_multisig(signer, date_from, date_to, api_key)
+
+    if received <= 0:
+        print(f"  No payouts found from multisig to {signer} in {month_name}.")
+        print(f"  Multisig: {MULTISIG_ADDRESS}")
+        print(f"  If you received payouts another way, use the manual distribute command.")
+        raise SystemExit(1)
+
+    print(f"  Found {tx_count} payout(s): {received:,.2f} POL")
+
+    # Step 3: Calculate eligible delegators
+    conn = get_db()
+    eligible, stats, all_dates, error = _calculate_eligible(
+        conn, validator_id, date_from, date_to, min_stake
+    )
+
+    if error:
+        print(f"\nError: {error}")
+        conn.close()
+        raise SystemExit(1)
+
+    if not eligible:
+        print("\nNo eligible delegators found.")
+        conn.close()
+        raise SystemExit(1)
+
+    print(f"\nDistribution period: {stats['snap_from']} -> {stats['snap_to']} ({stats['snapshot_count']} snapshots)")
+
+    total_eligible_stake = sum(e["min_stake"] for e in eligible.values())
+    min_pool = stats["min_pool"]
+
+    infra_cost = config.get("infra_cost_pol", 0)
+    share_pct = _get_share_pct(config, min_pool)
+
+    net = received - infra_cost
+    if net <= 0:
+        print(f"Error: Received ({received:,.2f}) does not cover infrastructure cost ({infra_cost:,.2f}).")
+        conn.close()
+        raise SystemExit(1)
+
+    to_distribute = Decimal(str(net)) * Decimal(str(share_pct)) / Decimal("100")
+
+    # Calculate individual payouts
+    total_distributed = Decimal("0")
+    for addr, info in eligible.items():
+        share = Decimal(str(info["min_stake"])) / Decimal(str(total_eligible_stake))
+        payout = (share * to_distribute).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        info["payout"] = float(payout)
+        total_distributed += payout
+
+    # Store distribution
+    now_ts = datetime.now(timezone.utc).isoformat()
+    cursor = conn.execute(
+        """INSERT INTO distributions
+           (validator_id, period_from, period_to, total_received, infra_cost,
+            share_pct, total_distributed, eligible_delegators, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (validator_id, date_from, date_to, received, infra_cost,
+         share_pct, float(total_distributed), len(eligible), now_ts),
+    )
+    dist_id = cursor.lastrowid
+
+    for addr, info in eligible.items():
+        conn.execute(
+            """INSERT INTO distribution_details
+               (distribution_id, delegator_address, stake_from, stake_to, min_stake, payout)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (dist_id, addr, info["stake_from"], info["stake_to"], info["min_stake"], info["payout"]),
+        )
+    conn.commit()
+    conn.close()
+
+    # Print summary
+    print(f"\n{'='*50}")
+    print(f"  Distribution Summary — {config.get('validator_name', f'Validator #{validator_id}')}")
+    print(f"  {month_name}")
+    print(f"{'='*50}")
+    print(f"  Received:            {received:>14,.2f} POL ({tx_count} payout{'s' if tx_count != 1 else ''})")
+    print(f"  Infrastructure cost: {infra_cost:>14,.2f} POL")
+    print(f"  Net:                 {net:>14,.2f} POL")
+    print(f"  Pool size (min):     {min_pool:>14,.2f} POL")
+    print(f"  Share percentage:    {share_pct:>13}%")
+    print(f"  To distribute:       {float(to_distribute):>14,.6f} POL")
+    print(f"  Eligible delegators: {len(eligible):>14}")
+    print(f"  Total distributed:   {float(total_distributed):>14,.6f} POL")
+    print(f"  Snapshots used:      {stats['snapshot_count']:>14}")
+
+    rounding_diff = float(to_distribute - total_distributed)
+    if abs(rounding_diff) > 0:
+        print(f"  Rounding difference: {rounding_diff:>14,.6f} POL")
+
+    print(f"\nTop 10 payouts:")
+    sorted_eligible = sorted(eligible.items(), key=lambda x: x[1]["payout"], reverse=True)
+    for i, (addr, info) in enumerate(sorted_eligible[:10]):
+        print(f"  {i+1}. {addr} — {info['payout']:,.6f} POL (stake: {info['min_stake']:,.2f})")
+
+    # Save CSV report
+    ensure_dirs()
+    report_date = last_month_start.strftime("%Y-%m")
+    report_path = os.path.join(OUTPUT_DIR, f"report_{report_date}.csv")
+    with open(report_path, "w") as f:
+        f.write("delegator_address,stake_from,stake_to,min_stake,payout\n")
+        for addr, info in sorted(eligible.items(), key=lambda x: x[1]["payout"], reverse=True):
+            f.write(f"{addr},{info['stake_from']:.2f},{info['stake_to']:.2f},{info['min_stake']:.2f},{info['payout']:.6f}\n")
+    print(f"\nReport saved: {report_path}")
+
+    # Export disperse file
+    export_path = os.path.join(OUTPUT_DIR, f"disperse_{report_date}.txt")
+    total_export = Decimal("0")
+    included = 0
+    with open(export_path, "w") as f:
+        for addr, info in sorted(eligible.items(), key=lambda x: x[1]["payout"], reverse=True):
+            if info["payout"] < min_payout:
+                continue
+            payout_dec = Decimal(str(info["payout"])).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+            payout_str = f"{payout_dec:f}".rstrip("0").rstrip(".")
+            f.write(f"{addr} {payout_str}\n")
+            total_export += payout_dec
+            included += 1
+
+    print(f"\nDisperse file ready: {included} addresses, {float(total_export):,.6f} POL")
+    print(f"Saved: {export_path}")
+    print(f"\nNext step: paste the contents of {export_path} into disperse.app")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Polygon Validator Priority Fee Sharing Tool",
@@ -633,6 +892,11 @@ def main():
     exp_parser.add_argument("--to", dest="date_to", required=True, help="Period end date (YYYY-MM-DD)")
     exp_parser.add_argument("--min-payout", type=float, default=0.01, help="Minimum payout in POL to include (default: 0.01)")
 
+    # auto-distribute
+    auto_parser = subparsers.add_parser("auto-distribute", help="Auto-distribute for previous month")
+    auto_parser.add_argument("--config", default="config.json", help="Config file path (default: config.json)")
+    auto_parser.add_argument("--min-payout", type=float, default=0.01, help="Minimum payout in POL to include (default: 0.01)")
+
     # status
     stat_parser = subparsers.add_parser("status", help="Show current state")
     stat_parser.add_argument("--validator", type=int, default=None, help="Validator ID (auto-detected if omitted)")
@@ -648,6 +912,7 @@ def main():
         "compare": cmd_compare,
         "distribute": cmd_distribute,
         "export": cmd_export,
+        "auto-distribute": cmd_auto_distribute,
         "status": cmd_status,
     }
     commands[args.command](args)

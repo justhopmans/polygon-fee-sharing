@@ -141,22 +141,38 @@ This runs every day at 00:05 UTC.
 - Arguments: `fee_sharing.py snapshot --validator 118`
 - Start in: `C:\path\to\polygon-fee-sharing`
 
-### Step 6: Monthly distribution (5 minutes)
+### Step 6: Monthly distribution
 
-At the end of each month, when you know how much POL you received in priority fees:
+On the 1st of each month, run one command:
 
 ```bash
-# 1. Compare start and end of month — see who's eligible
-python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01
-
-# 2. Calculate distribution — enter the POL you received
-python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
-
-# 3. Export for disperse.app
-python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
+python fee_sharing.py auto-distribute --config config.json
 ```
 
-This creates a file in the `output/` folder called `disperse_YYYY-MM-DD.txt`.
+That's it. The tool automatically:
+- Determines the previous calendar month (e.g. runs May 1 → calculates for April)
+- Looks up your validator's signer address
+- Fetches payouts from the priority fee multisig (`0x7Ee41D8A...66B0`) to your signer
+- Checks all daily snapshots — only delegators present every day are eligible
+- Calculates each delegator's share using their lowest stake across the month
+- Exports the CSV report and disperse.app file to `output/`
+
+You can automate this too (add to your crontab):
+```
+0 12 1 * * cd /path/to/polygon-fee-sharing && python3 fee_sharing.py auto-distribute --config config.json
+```
+This runs at noon UTC on the 1st of each month.
+
+**Optional: PolygonScan API key.** The tool fetches payout data from PolygonScan. Without an API key it works but has lower rate limits. Get a free key at [polygonscan.com/apis](https://polygonscan.com/apis) and add it to your config:
+```json
+"polygonscan_api_key": "your-api-key-here"
+```
+
+**Manual mode.** If you prefer to enter the received amount yourself:
+```bash
+python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
+python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
+```
 
 ### Step 7: Send the payouts
 
@@ -179,17 +195,19 @@ python fee_sharing.py status --validator 118
 | Command | What it does |
 |---------|-------------|
 | `snapshot --validator ID` | Take a daily snapshot of all delegators |
-| `compare --from DATE --to DATE` | Compare two snapshots, show eligible delegators |
-| `distribute --config FILE --received AMOUNT --from DATE --to DATE` | Calculate the distribution |
-| `export --config FILE --from DATE --to DATE` | Export disperse.app file |
+| `auto-distribute --config FILE` | Auto-fetch payouts, calculate, and export for previous month |
+| `compare --from DATE --to DATE` | Preview eligible delegators between two dates |
+| `distribute --config FILE --received AMOUNT --from DATE --to DATE` | Manual distribution with a specified amount |
+| `export --config FILE --from DATE --to DATE` | Export disperse.app file from a manual distribution |
 | `status --validator ID` | Show snapshot and distribution history |
 
 ## Data Sources
 
-|Source             |Endpoint                                                          |Purpose                 |
-|-------------------|------------------------------------------------------------------|------------------------|
-|Polygon Staking API|`staking-api.polygon.technology/api/v2/validators/{id}/delegators`|Delegator snapshots     |
-|PolygonScan        |Multisig TX history                                               |Fee analytics, burn data|
+|Source             |Endpoint                                                          |Purpose            |
+|-------------------|------------------------------------------------------------------|-------------------|
+|Polygon Staking API|`staking-api.polygon.technology/api/v2/validators/{id}/delegators`|Delegator snapshots|
+|Polygon Staking API|`staking-api.polygon.technology/api/v2/validators/{id}`           |Validator signer   |
+|PolygonScan        |`api.polygonscan.com/api` (multisig `0x7Ee41D8A...66B0`)          |Payout verification|
 
 ## Monthly Report
 
