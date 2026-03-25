@@ -89,7 +89,7 @@ Open a terminal (Mac/Linux) or Command Prompt (Windows) and run:
 ```bash
 git clone https://github.com/justhopmans/polygon-fee-sharing.git
 cd polygon-fee-sharing
-pip install -r requirements.txt
+python -m pip install -r requirements.txt 
 ```
 
 ### Step 3: Configure for your validator
@@ -161,7 +161,12 @@ On the 1st of each month, run one command:
 ```bash
 python fee_sharing.py auto-distribute --config config.json
 ```
+## Step 7: Monthly output
 
+On the 1st of each month you will automatically receive two files in the `output/` folder:
+- **CSV report** — open directly in Excel
+- **disperse.app file** — upload on [disperse.app](https://disperse.app) to pay out your delegators in one transaction
+  
 That's it. The tool automatically:
 - Determines the previous calendar month (e.g. runs May 1 → calculates for April)
 - Looks up your validator's signer address
