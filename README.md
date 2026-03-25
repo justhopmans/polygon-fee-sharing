@@ -30,7 +30,7 @@ Until then, this tool enables any validator to start sharing voluntarily.
 
 - **Full month requirement** — Delegators must be present in both the start-of-month and end-of-month snapshots
 - **Minimum stake used** — If a delegator decreases their stake mid-month, only the lower amount counts
-- **Minimum threshold** — Configurable minimum stake to be eligible (default: 100 POL)
+- **Minimum threshold** — Configurable minimum stake to be eligible (default: 500 POL)
 - **Daily snapshots** — Continuous monitoring prevents flash staking (stake day before snapshot, unstake day after)
 
 ### Tiered Sharing Model
@@ -74,12 +74,12 @@ cp config.example.json config.json
 python fee_sharing.py snapshot --validator 118
 
 # Compare two months and find eligible delegators
-python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01 --min-stake 100
+python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01 --min-stake 500
 
 # Calculate distribution (reads sharing %, infra cost from config.json)
 python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
 
-# Export for disperse.app
+# Export for disperse.app (skips payouts below 0.01 POL by default)
 python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
 
 # Check status
@@ -100,7 +100,7 @@ Set up a cron job to take snapshots automatically:
 |Source             |Endpoint                                                          |Purpose                 |
 |-------------------|------------------------------------------------------------------|------------------------|
 |Polygon Staking API|`staking-api.polygon.technology/api/v2/validators/{id}/delegators`|Delegator snapshots     |
-|PolygonScan        |Multisig TX history                                               `                                                   |Fee analytics, burn data|
+|PolygonScan        |Multisig TX history                                               |Fee analytics, burn data|
 
 ## Monthly Report
 
@@ -174,7 +174,7 @@ To distribute:      15,200 POL
 
 Delegator A (1M POL, 10% of pool):  1,520 POL
 Delegator B (500K POL, 5% of pool):   760 POL
-Delegator C (100 POL, 0.001%):        0.15 POL
+Delegator C (5K POL, 0.05% of pool):    7.60 POL
 ...
 ```
 
