@@ -95,8 +95,7 @@ Set up a cron job to take snapshots automatically:
 |Source             |Endpoint                                                          |Purpose                 |
 |-------------------|------------------------------------------------------------------|------------------------|
 |Polygon Staking API|`staking-api.polygon.technology/api/v2/validators/{id}/delegators`|Delegator snapshots     |
-|PolygonScan        |Multisig TX history                                               |Payout verification     |
-|Poltrack           |`poltrack.tech`                                                   |Fee analytics, burn data|
+|PolygonScan        |Multisig TX history                                               `                                                   |Fee analytics, burn data|
 
 ## Monthly Report
 
@@ -193,7 +192,4 @@ MIT License — use it, fork it, improve it.
 - LEGEND Nodes ([@LegendNodes](https://x.com/LegendNodes)) — Fee sharing system design, managed service, Stakebaby validator #118
 
 ## Acknowledgments
-
-- PathrockNetwork ([@Pathrock2](https://x.com/Pathrock2)) — Early adopter, validator #45
-- Poltrack ([poltrack.tech](https://poltrack.tech)) — Fee analytics and methodology
 - Sandeep Nailwal — Public endorsement of the Priority Fee Sharing PIP
