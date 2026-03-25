@@ -23,7 +23,7 @@ Until then, this tool enables any validator to start sharing voluntarily.
 1. **Monthly cadence** — At the end of each calendar month, all priority fee payouts received that month are combined
 1. **Infrastructure deduction** — A fixed amount (default: 10,000 POL, ~$929/month) is deducted for validator infrastructure costs
 1. **Share percentage** — The validator chooses what percentage to distribute (can be tiered by pool size)
-1. **Eligibility check** — Only delegators who staked the full month are eligible. The minimum staked amount between snapshots is used for calculation
+1. **Eligibility check** — Only delegators present in every daily snapshot are eligible. The lowest stake across all snapshots is used for calculation
 1. **Proportional distribution** — Each eligible delegator receives: `(their_min_stake / total_eligible_stake) × amount_to_distribute`
 1. **Payout** — Distribution via [disperse.app](https://disperse.app) in a single transaction
 
@@ -179,7 +179,7 @@ python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05
 1. Open [disperse.app](https://disperse.app)
 2. Connect your validator wallet
 3. Select POL as the token
-4. Paste the contents of `disperse_YYYY-MM-DD.txt`
+4. Paste the contents of the disperse file from `output/`
 5. Confirm and send the transaction
 
 Done. Your delegators have been paid.
@@ -200,6 +200,59 @@ python fee_sharing.py status --validator 118
 | `distribute --config FILE --received AMOUNT --from DATE --to DATE` | Manual distribution with a specified amount |
 | `export --config FILE --from DATE --to DATE` | Export disperse.app file from a manual distribution |
 | `status --validator ID` | Show snapshot and distribution history |
+
+## Safety & Edge Cases
+
+The tool is designed to prevent mistakes that could cost validators or delegators money.
+
+### Double payout protection
+
+Running `auto-distribute` twice for the same month does nothing the second time. The tool detects that a distribution already exists and stops:
+
+```
+Distribution for April 2026 already exists.
+  Received:    45,000.00 POL
+  Distributed: 10,500.00 POL
+  Created:     2026-05-01T12:00:00+00:00
+
+To prevent double payouts, this period is skipped.
+```
+
+This works even if the cron job fires twice, or if you accidentally run it manually after the cron already did.
+
+### No payout in a month
+
+If the multisig didn't send any POL to your validator in a given month, the tool detects this and stops cleanly:
+
+```
+No payouts found from multisig to 0x... in April 2026.
+```
+
+No distribution is created. No file is generated. Nothing to send.
+
+### Delegator leaves and comes back
+
+A delegator who unstakes on April 10 and restakes on April 25 is **not eligible** for April. The tool checks every daily snapshot — if you're missing from even one, you're excluded. This prevents gaming where someone moves stake between validators and tries to collect from both.
+
+### Missed snapshot days
+
+If your machine was off and a daily snapshot was missed, the tool still works — it just has fewer data points. The more snapshots you have, the tighter the anti-gaming protection. For best results, run snapshots on a machine that's always on (server, VPS, or the same machine running your validator node).
+
+### Mid-month stake reduction
+
+If a delegator had 100,000 POL on April 1 but reduced to 60,000 POL on April 15, their payout is calculated based on 60,000 POL — the lowest amount across all daily snapshots. This prevents inflating stake right before distribution.
+
+### Multisig address changes
+
+The priority fee multisig address (`0x7Ee41D8A25641000661B1EF5E6AE8A00400466B0`) is hardcoded. If it ever changes, the tool will report zero payouts. In that case, use the manual `distribute` command with `--received` until the tool is updated.
+
+### Validator ID not configured
+
+If you forget to change `validator_id` from the default `0`, the tool will tell you:
+
+```
+Error: validator_id is still 0. Edit config.json with your validator ID.
+```
 
 ## Data Sources
 
