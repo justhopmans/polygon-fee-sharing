@@ -1,0 +1,17 @@
+{
+  "validator_id": 118,
+  "validator_name": "Stakebaby",
+  "infra_cost_pol": 10000,
+  "min_stake_pol": 100,
+  "sharing_tiers": [
+    {"min_pool": 0, "max_pool": 5000000, "share_pct": 0},
+    {"min_pool": 5000000, "max_pool": 10000000, "share_pct": 30},
+    {"min_pool": 10000000, "max_pool": 20000000, "share_pct": 38},
+    {"min_pool": 20000000, "max_pool": 30000000, "share_pct": 45},
+    {"min_pool": 30000000, "max_pool": 50000000, "share_pct": 51},
+    {"min_pool": 50000000, "max_pool": 100000000, "share_pct": 55},
+    {"min_pool": 100000000, "max_pool": 150000000, "share_pct": 58},
+    {"min_pool": 150000000, "max_pool": null, "share_pct": 60}
+  ],
+  "flat_share_pct": null
+}
