@@ -93,10 +93,7 @@ python -m pip install -r requirements.txt
 ```
 
 ### Step 3: Configure for your validator
-
-```bash
-cp config.example.json config.json
-```
+Go to `C:\Users\YourName\polygon-fee-sharing` in Explorer, right-click `config.example.json` → Copy → Paste → rename to `config.json`
 
 Open `config.json` in any text editor. You only need to change two things:
 
