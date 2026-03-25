@@ -60,9 +60,11 @@ The tier is determined by the pool size that was maintained for the entire month
 ### Installation
 
 ```bash
-git clone https://github.com/[your-handle]/polygon-fee-sharing.git
+git clone https://github.com/justhopmans/polygon-fee-sharing.git
 cd polygon-fee-sharing
-pip install requests
+pip install -r requirements.txt
+cp config.example.json config.json
+# Edit config.json with your validator ID and sharing preferences
 ```
 
 ### Usage
@@ -74,11 +76,14 @@ python fee_sharing.py snapshot --validator 118
 # Compare two months and find eligible delegators
 python fee_sharing.py compare --from 2026-04-01 --to 2026-05-01 --min-stake 100
 
-# Calculate distribution
-python fee_sharing.py distribute --amount 45000 --share-pct 30 --infra-cost 10000
+# Calculate distribution (reads sharing %, infra cost from config.json)
+python fee_sharing.py distribute --config config.json --received 45000 --from 2026-04-01 --to 2026-05-01
 
 # Export for disperse.app
-python fee_sharing.py export --format disperse
+python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05-01
+
+# Check status
+python fee_sharing.py status --validator 118
 ```
 
 ### Automate Daily Snapshots
