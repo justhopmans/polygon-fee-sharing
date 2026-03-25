@@ -5,7 +5,7 @@ An open-source tool for Polygon PoS validators to share priority fees with their
 
 ## The Problem
 
-Since the Rio hardfork (PIP-65), Polygon PoS priority fees are distributed exclusively to validators. Delegators provide 99.66% of staked capital and receive 0% of priority fees.
+Polygon PoS priority fees are distributed exclusively to validators. Delegators provide 99.66% of staked capital and receive 0% of priority fees.
 
 The multisig distributing these fees has no published schedule, no documented methodology, and no public payout periods. Validators who want to share fees with delegators cannot calculate a fair distribution — they are forced to estimate.
 
@@ -338,11 +338,6 @@ For questions or to join: [@HopmansJust](https://x.com/HopmansJust) on X or on t
 - [PIP: Priority Fee Sharing for Delegators](https://forum.polygon.technology/t/pip-priority-fee-sharing-for-delegators/21793) — Protocol-level mandatory fee sharing (Status: Review)
 - [Pre-PIP: Base Reward for Priority Fee Distribution](https://forum.polygon.technology/t/pre-pip-base-reward-for-priority-fee-distribution/21815) — Base reward ensuring all performing validators cover infrastructure costs (Status: Draft)
 
-### Payout Reports
-
-- [February 28, 2026 Payout Report](https://forum.polygon.technology/t/polygon-validator-priority-fee-payout-report-february-28/21812)
-- [March 17, 2026 Payout Report](https://forum.polygon.technology/t/polygon-validator-priority-fee-payout-report-march-17/21xxx)
-
 ## How the Math Works
 
 ### Example
@@ -377,8 +372,8 @@ MIT License — use it, fork it, improve it.
 
 ## Authors
 
-- Just Hopmans ([@HopmansJust](https://x.com/HopmansJust)) — Tool, dashboard, monthly reports
-- LEGEND Nodes ([@LegendNodes](https://x.com/LegendNodes)) — Fee sharing system design, managed service, Stakebaby validator #118
+- Just Hopmans ([@HopmansJust](https://x.com/HopmansJust)) — Tool, dashboard, monthly reports,
+- Fee sharing system design, [@LegendNodes](https://x.com/LegendNodes) managed service, Stakebaby validator #118
 
 ## Acknowledgments
 - Sandeep Nailwal — Public endorsement of the Priority Fee Sharing PIP
