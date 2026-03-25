@@ -320,7 +320,7 @@ Validators who share will be visible. Validators who don’t will show zeros.
 Two options:
 
 1. **Self-serve** — Use this tool. Run your own snapshots, calculations, and payouts independently.
-1. **Managed service** — Contact [@LegendNodes](https://x.com/LegendNodes) who will handle snapshots, calculations, and distribution for your validator. Free of charge.
+1. **Managed service** — Contact [@LegendNodes](https://x.com/LegendNodes) who will handle snapshots, calculations, and distribution for your validator. 
 
 For questions or to join: [@HopmansJust](https://x.com/HopmansJust) on X or on the [Polygon Governance Forum](https://forum.polygon.technology).
 
@@ -378,7 +378,7 @@ MIT License — use it, fork it, improve it.
 
 ## Acknowledgments
 - Sandeep Nailwal — Public endorsement of the Priority Fee Sharing PIP
-
+- LEGEND Nodes (@LegendNodes) — Co-author of the Base Reward Pre-PIP, managed service for validators
 ## Disclaimer
 
 This tool is provided as-is. Use at your own risk. Always verify distribution calculations before sending transactions. The authors are not responsible for any financial losses resulting from the use of this tool.
