@@ -550,8 +550,8 @@ def cmd_distribute(args):
 
     # Save CSV report
     ensure_dirs()
-    report_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    report_path = os.path.join(OUTPUT_DIR, f"report_{report_date}.csv")
+    period_label = f"{from_date}_to_{to_date}"
+    report_path = os.path.join(OUTPUT_DIR, f"report_{validator_id}_{period_label}.csv")
     with open(report_path, "w") as f:
         f.write("delegator_address,stake_from,stake_to,min_stake,payout\n")
         for addr, info in sorted(eligible.items(), key=lambda x: x[1]["payout"], reverse=True):
@@ -599,8 +599,8 @@ def cmd_export(args):
         raise SystemExit(1)
 
     ensure_dirs()
-    export_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    export_path = os.path.join(OUTPUT_DIR, f"disperse_{export_date}.txt")
+    period_label = f"{from_date}_to_{to_date}"
+    export_path = os.path.join(OUTPUT_DIR, f"disperse_{validator_id}_{period_label}.txt")
 
     total = Decimal("0")
     included = 0
@@ -854,8 +854,8 @@ def cmd_auto_distribute(args):
 
     # Save CSV report
     ensure_dirs()
-    report_date = last_month_start.strftime("%Y-%m")
-    report_path = os.path.join(OUTPUT_DIR, f"report_{report_date}.csv")
+    period_label = f"{date_from}_{date_to}"
+    report_path = os.path.join(OUTPUT_DIR, f"report_{validator_id}_{period_label}.csv")
     with open(report_path, "w") as f:
         f.write("delegator_address,stake_from,stake_to,min_stake,payout\n")
         for addr, info in sorted(eligible.items(), key=lambda x: x[1]["payout"], reverse=True):
@@ -863,7 +863,7 @@ def cmd_auto_distribute(args):
     print(f"\nReport saved: {report_path}")
 
     # Export disperse file
-    export_path = os.path.join(OUTPUT_DIR, f"disperse_{report_date}.txt")
+    export_path = os.path.join(OUTPUT_DIR, f"disperse_{validator_id}_{period_label}.txt")
     total_export = Decimal("0")
     included = 0
     with open(export_path, "w") as f:

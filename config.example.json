@@ -1,14 +1,10 @@
 {
   "validator_id": 0,
   "validator_name": "Your Validator Name",
-
   "infra_cost_pol": 10000,
   "min_stake_pol": 500,
-
   "flat_share_pct": 30,
-
   "polygonscan_api_key": null,
-
   "sharing_tiers": [
     {"min_pool": 0, "max_pool": 5000000, "share_pct": 0},
     {"min_pool": 5000000, "max_pool": 10000000, "share_pct": 30},

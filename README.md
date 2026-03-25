@@ -1,5 +1,5 @@
 # Polygon Validator Priority Fee Sharing Tool
-![Tests](<https://github.com/justhopmans/polygon-fee-sharing/actions/workflows/tests.yml/badge.svg>)
+[![Tests](https://github.com/justhopmans/polygon-fee-sharing/actions/workflows/tests.yml/badge.svg)](https://github.com/justhopmans/polygon-fee-sharing/actions/workflows/tests.yml)
 
 An open-source tool for Polygon PoS validators to share priority fees with their delegators.
 
@@ -33,6 +33,19 @@ Until then, this tool enables any validator to start sharing voluntarily.
 - **Minimum stake used** — The lowest stake across all daily snapshots is used for payout calculation. A mid-month dip counts.
 - **Minimum threshold** — Configurable minimum stake to be eligible (default: 500 POL)
 - **Daily snapshots** — Continuous monitoring prevents flash staking (stake day before snapshot, unstake day after)
+- **Double payout protection** — The tool refuses to process a period that was already distributed
+
+### What Happens When...
+
+| Scenario | Result |
+|----------|--------|
+| Delegator joins mid-month | Not eligible until next full month |
+| Delegator leaves before payout | No allocation — their share goes to loyal delegators |
+| Delegator leaves and returns | Must be present every day — gap means exclusion |
+| Delegator reduces stake | Payout based on the lowest stake that month |
+| No payout from multisig | Tool reports no payout found, nothing happens |
+| Run auto-distribute twice | Second run is blocked — double payout protection |
+| Missed a few daily snapshots | Tool still works with available snapshots, but anti-gaming is weaker |
 
 ### Tiered Sharing Model
 
@@ -200,6 +213,17 @@ python fee_sharing.py status --validator 118
 | `distribute --config FILE --received AMOUNT --from DATE --to DATE` | Manual distribution with a specified amount |
 | `export --config FILE --from DATE --to DATE` | Export disperse.app file from a manual distribution |
 | `status --validator ID` | Show snapshot and distribution history |
+
+## Output Files
+
+Each run produces two files in the `output/` directory:
+
+| File | Purpose |
+|------|---------|
+| `report_{validator_id}_{from}_to_{to}.csv` | Full report with every delegator's stake and payout — for your records |
+| `disperse_{validator_id}_{from}_to_{to}.txt` | Ready to paste into disperse.app — for the actual payout |
+
+Files include the validator ID and period so they never get mixed up across months or validators.
 
 ## Safety & Edge Cases
 
