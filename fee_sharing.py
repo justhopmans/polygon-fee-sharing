@@ -171,16 +171,28 @@ def cmd_snapshot(args):
     print(f"Snapshot taken: {len(delegators)} active delegators, {total_stake:,.2f} POL total")
 
 
-def _get_closest_snapshot(conn, validator_id, target_date):
-    """Find the snapshot date closest to the target date for a validator."""
+def _get_closest_snapshot(conn, validator_id, target_date, warn_days=3):
+    """Find the snapshot date closest to the target date for a validator.
+
+    Prints a warning if the closest snapshot is more than warn_days away.
+    """
     row = conn.execute(
-        """SELECT snapshot_date FROM snapshots
+        """SELECT snapshot_date, ABS(JULIANDAY(snapshot_date) - JULIANDAY(?)) as diff_days
+           FROM snapshots
            WHERE validator_id = ?
-           ORDER BY ABS(JULIANDAY(snapshot_date) - JULIANDAY(?))
+           GROUP BY snapshot_date
+           ORDER BY diff_days
            LIMIT 1""",
-        (validator_id, target_date),
+        (target_date, validator_id),
     ).fetchone()
-    return row[0] if row else None
+    if not row:
+        return None
+    snapshot_date, diff_days = row[0], row[1]
+    if diff_days > warn_days:
+        print(f"  Warning: Closest snapshot to {target_date} is {snapshot_date} ({int(diff_days)} days away)")
+    elif snapshot_date != target_date:
+        print(f"  Note: Using snapshot from {snapshot_date} (closest to {target_date})")
+    return snapshot_date
 
 
 def _get_snapshot_data(conn, validator_id, snapshot_date):
@@ -193,12 +205,30 @@ def _get_snapshot_data(conn, validator_id, snapshot_date):
     return {row[0]: row[1] for row in rows}
 
 
+def _resolve_config_path(config_path):
+    """Resolve config path: if relative, check cwd first, then BASE_DIR."""
+    if os.path.isabs(config_path):
+        return config_path
+    # Check relative to cwd first
+    if os.path.exists(config_path):
+        return os.path.abspath(config_path)
+    # Fall back to relative to script directory
+    base_path = os.path.join(BASE_DIR, config_path)
+    if os.path.exists(base_path):
+        return base_path
+    return config_path  # Return as-is, will fail with clear error
+
+
 def _load_config(config_path):
     """Load and validate configuration file."""
-    if not os.path.exists(config_path):
+    resolved = _resolve_config_path(config_path)
+    if not os.path.exists(resolved):
         print(f"Error: Config file not found: {config_path}")
+        print(f"  Searched: {os.path.abspath(config_path)}")
+        print(f"  Searched: {os.path.join(BASE_DIR, config_path)}")
+        print(f"  Copy config.example.json to config.json and edit it.")
         raise SystemExit(1)
-    with open(config_path) as f:
+    with open(resolved) as f:
         return json.load(f)
 
 
@@ -523,9 +553,10 @@ def cmd_status(args):
         print(f"    Distributed:    {latest_dist[2]:,.2f} POL to {latest_dist[3]} delegators")
 
     # Config summary
-    config_path = os.path.join(BASE_DIR, "config.json")
+    config_path = _resolve_config_path("config.json")
     if os.path.exists(config_path):
-        config = _load_config(config_path)
+        with open(config_path) as f:
+            config = json.load(f)
         if config.get("validator_id") == validator_id:
             print(f"\n  Config ({config.get('validator_name', 'N/A')}):")
             print(f"    Infra cost:     {config.get('infra_cost_pol', 0):,.0f} POL")
