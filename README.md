@@ -1,4 +1,5 @@
 # Polygon Validator Priority Fee Sharing Tool
+![Tests](<https://github.com/justhopmans/polygon-fee-sharing/actions/workflows/tests.yml/badge.svg>)
 
 An open-source tool for Polygon PoS validators to share priority fees with their delegators.
 
