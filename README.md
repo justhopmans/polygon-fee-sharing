@@ -85,19 +85,26 @@ pip install -r requirements.txt
 cp config.example.json config.json
 ```
 
-Open `config.json` in any text editor and change these fields:
+Open `config.json` in any text editor. You only need to change two things:
 
 ```json
 {
-  "validator_id": 118,        ← your validator ID (find it on staking.polygon.technology)
-  "validator_name": "Stakebaby",  ← your validator name
-  "infra_cost_pol": 10000,    ← monthly infrastructure cost to deduct
-  "min_stake_pol": 500,       ← minimum delegation to be eligible
-  "flat_share_pct": null      ← set a number (e.g. 30) for flat %, or leave null for tiers
+  "validator_id": 0,                  ← change to your validator ID
+  "validator_name": "Your Validator Name",  ← change to your name
+
+  "infra_cost_pol": 10000,            ← monthly infra cost to deduct (POL)
+  "min_stake_pol": 500,               ← delegators below this are excluded
+
+  "flat_share_pct": 30,               ← percentage to share (e.g. 30 = 30%)
+  ...
 }
 ```
 
-If you use `flat_share_pct`, the `sharing_tiers` are ignored. If you leave it `null`, configure the tiers to match your sharing policy.
+**Find your validator ID** at [staking.polygon.technology](https://staking.polygon.technology) — it's the number in the URL when you click your validator (e.g. Stakebaby is #118).
+
+**Choose your share percentage.** Set `flat_share_pct` to the percentage you want to share (e.g. `30` means 30% of net fees go to delegators). This is the simplest option.
+
+**Advanced: tiered sharing.** If you want the share percentage to increase as your pool grows, set `flat_share_pct` to `null` and edit the `sharing_tiers` in the config file. The tiers are pre-filled with a suggested scale.
 
 ### Step 4: Take your first snapshot
 
