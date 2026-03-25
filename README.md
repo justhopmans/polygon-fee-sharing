@@ -198,7 +198,7 @@ python fee_sharing.py export --config config.json --from 2026-04-01 --to 2026-05
 Done. Your delegators have been paid.
 
 ### Check status anytime
-
+Use this to verify your setup is working — check if daily snapshots are coming in and see a history of past distributions.
 ```bash
 python fee_sharing.py status --validator 118
 ```
@@ -370,10 +370,13 @@ The priority fee multisig distributes at irregular intervals (37 days, then 17 d
 
 MIT License — use it, fork it, improve it.
 
-## Authors
+## Author
 
-- Just Hopmans ([@HopmansJust](https://x.com/HopmansJust)) — Tool, dashboard, monthly reports,
-- Fee sharing system design, [@LegendNodes](https://x.com/LegendNodes) managed service, Stakebaby validator #118
+- Just Hopmans ([@HopmansJust](https://x.com/HopmansJust)) — Tool, dashboard, monthly reports,Fee sharing system design,
 
 ## Acknowledgments
 - Sandeep Nailwal — Public endorsement of the Priority Fee Sharing PIP
+
+## Disclaimer
+
+This tool is provided as-is. Use at your own risk. Always verify distribution calculations before sending transactions. The authors are not responsible for any financial losses resulting from the use of this tool.
