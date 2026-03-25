@@ -420,6 +420,7 @@ class TestEndToEnd(unittest.TestCase):
         args_export.config = config_path
         args_export.date_from = "2026-04-01"
         args_export.date_to = "2026-05-01"
+        args_export.min_payout = 0.01
         fee_sharing.cmd_export(args_export)
 
         # Check disperse file exists and format

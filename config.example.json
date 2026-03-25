@@ -2,7 +2,7 @@
   "validator_id": 118,
   "validator_name": "Stakebaby",
   "infra_cost_pol": 10000,
-  "min_stake_pol": 100,
+  "min_stake_pol": 500,
   "sharing_tiers": [
     {"min_pool": 0, "max_pool": 5000000, "share_pct": 0},
     {"min_pool": 5000000, "max_pool": 10000000, "share_pct": 30},

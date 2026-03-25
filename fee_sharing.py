@@ -593,7 +593,7 @@ def main():
     cmp_parser = subparsers.add_parser("compare", help="Compare two snapshots")
     cmp_parser.add_argument("--from", dest="date_from", required=True, help="Start date (YYYY-MM-DD)")
     cmp_parser.add_argument("--to", dest="date_to", required=True, help="End date (YYYY-MM-DD)")
-    cmp_parser.add_argument("--min-stake", type=float, default=100, help="Minimum stake in POL (default: 100)")
+    cmp_parser.add_argument("--min-stake", type=float, default=500, help="Minimum stake in POL (default: 500)")
     cmp_parser.add_argument("--validator", type=int, default=None, help="Validator ID (auto-detected if omitted)")
 
     # distribute
@@ -608,7 +608,7 @@ def main():
     exp_parser.add_argument("--config", default="config.json", help="Config file path (default: config.json)")
     exp_parser.add_argument("--from", dest="date_from", required=True, help="Period start date (YYYY-MM-DD)")
     exp_parser.add_argument("--to", dest="date_to", required=True, help="Period end date (YYYY-MM-DD)")
-    exp_parser.add_argument("--min-payout", type=float, default=500, help="Minimum payout in POL to include (default: 500)")
+    exp_parser.add_argument("--min-payout", type=float, default=0.01, help="Minimum payout in POL to include (default: 0.01)")
 
     # status
     stat_parser = subparsers.add_parser("status", help="Show current state")
