@@ -464,6 +464,8 @@ def cmd_export(args):
 
     dist_id = row[0]
 
+    min_payout = args.min_payout
+
     details = conn.execute(
         """SELECT delegator_address, payout FROM distribution_details
            WHERE distribution_id = ? AND payout > 0
@@ -481,15 +483,24 @@ def cmd_export(args):
     export_path = os.path.join(OUTPUT_DIR, f"disperse_{export_date}.txt")
 
     total = Decimal("0")
+    included = 0
+    skipped = 0
+    skipped_total = Decimal("0")
     with open(export_path, "w") as f:
         for addr, payout in details:
-            # Format payout without trailing zeros but up to 6 decimal places
+            if payout < min_payout:
+                skipped += 1
+                skipped_total += Decimal(str(payout))
+                continue
             payout_dec = Decimal(str(payout)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
             payout_str = f"{payout_dec:f}".rstrip("0").rstrip(".")
             f.write(f"{addr} {payout_str}\n")
             total += payout_dec
+            included += 1
 
-    print(f"Disperse file ready: {len(details)} addresses, {float(total):,.6f} POL")
+    print(f"Disperse file ready: {included} addresses, {float(total):,.6f} POL")
+    if skipped > 0:
+        print(f"Skipped: {skipped} addresses below {min_payout} POL minimum payout ({float(skipped_total):,.6f} POL)")
     print(f"Saved: {export_path}")
 
 
@@ -597,6 +608,7 @@ def main():
     exp_parser.add_argument("--config", default="config.json", help="Config file path (default: config.json)")
     exp_parser.add_argument("--from", dest="date_from", required=True, help="Period start date (YYYY-MM-DD)")
     exp_parser.add_argument("--to", dest="date_to", required=True, help="Period end date (YYYY-MM-DD)")
+    exp_parser.add_argument("--min-payout", type=float, default=500, help="Minimum payout in POL to include (default: 500)")
 
     # status
     stat_parser = subparsers.add_parser("status", help="Show current state")
