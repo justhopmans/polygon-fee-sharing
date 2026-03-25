@@ -728,6 +728,26 @@ def cmd_auto_distribute(args):
     print(f"Auto-distribute for {month_name}")
     print(f"Period: {date_from} -> {date_to}")
 
+    # Check if distribution already exists for this period
+    conn = get_db()
+    existing = conn.execute(
+        """SELECT id, total_received, total_distributed, timestamp FROM distributions
+           WHERE validator_id = ? AND period_from = ? AND period_to = ?
+           ORDER BY timestamp DESC LIMIT 1""",
+        (validator_id, date_from, date_to),
+    ).fetchone()
+    conn.close()
+
+    if existing:
+        print(f"\nDistribution for {month_name} already exists.")
+        print(f"  Received:    {existing[1]:,.2f} POL")
+        print(f"  Distributed: {existing[2]:,.2f} POL")
+        print(f"  Created:     {existing[3]}")
+        print(f"\nTo prevent double payouts, this period is skipped.")
+        print(f"Check output/ for the existing disperse file.")
+        print(f"To force a recalculation, use the manual distribute command.")
+        return
+
     # Step 1: Look up validator signer address
     print(f"\nLooking up signer address for validator #{validator_id}...")
     signer = fetch_validator_signer(validator_id)
