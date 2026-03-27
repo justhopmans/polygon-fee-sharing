@@ -25,7 +25,7 @@ contract PriorityFeeDistributorForkTest is Test {
 
     uint256 constant BASE_REWARD = 9_500 ether;
     uint256 constant COOLDOWN = 1 days;
-    uint256 constant MAX_VAL_ID = 150; // enough to cover all ~105 validators
+    uint256 constant MAX_VAL_ID = 105; // matches spec's validator count
 
     function setUp() public {
         stakeManager = IStakeManager(STAKE_MANAGER);
