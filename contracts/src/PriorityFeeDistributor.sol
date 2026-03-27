@@ -112,6 +112,7 @@ contract PriorityFeeDistributor {
         }
 
         uint256 totalBalance = polToken.balanceOf(address(this));
+        if (totalBalance == 0) revert InsufficientBalance(0, 1);
 
         // ── Step 1: Build list of active validators and their stakes ──
 

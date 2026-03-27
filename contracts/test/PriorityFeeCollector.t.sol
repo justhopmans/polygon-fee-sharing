@@ -79,6 +79,20 @@ contract PriorityFeeCollectorTest is Test {
         assertEq(amount, 1 ether);
     }
 
+    function test_QueueBridge_RevertsIfAlreadyQueued() public {
+        vm.deal(address(collector), THRESHOLD * 2);
+        collector.queueBridge();
+
+        // Second queue should revert.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PriorityFeeCollector.TransferAlreadyQueued.selector,
+                block.timestamp + TIMELOCK
+            )
+        );
+        collector.queueBridge();
+    }
+
     function test_QueueBridge_CapsAmount() public {
         vm.deal(address(collector), TRANSFER_CAP * 2);
         collector.queueBridge();

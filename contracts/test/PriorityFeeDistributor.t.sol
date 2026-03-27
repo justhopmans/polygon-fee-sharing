@@ -219,6 +219,19 @@ contract PriorityFeeDistributorTest is Test {
         distributor.distribute();
     }
 
+    function test_Distribute_RevertsOnZeroBalance() public {
+        // No POL in the distributor — should revert, not start cooldown.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PriorityFeeDistributor.InsufficientBalance.selector, 0, 1
+            )
+        );
+        distributor.distribute();
+
+        // Cooldown should NOT have started.
+        assertEq(distributor.lastDistribution(), 0);
+    }
+
     function test_OnlyGovernance_SetBaseReward() public {
         vm.expectRevert(PriorityFeeDistributor.OnlyGovernance.selector);
         distributor.setBaseRewardPerValidator(10_000 ether);

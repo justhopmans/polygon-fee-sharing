@@ -21,6 +21,7 @@ contract PriorityFeeCollector {
     error BelowThreshold(uint256 balance, uint256 threshold);
     error TimelockNotReady(uint256 executeAfter, uint256 currentTime);
     error NoPendingTransfer();
+    error TransferAlreadyQueued(uint256 executeAfter);
     error ExceedsTransferCap(uint256 amount, uint256 cap);
     error OnlyGovernance();
     error ZeroAddress();
@@ -110,6 +111,11 @@ contract PriorityFeeCollector {
     /// @notice Step 1: Queue a bridge transfer. Anyone can call.
     /// @dev Requires balance >= threshold OR maxBridgePeriod elapsed.
     function queueBridge() external {
+        // Prevent overwriting an already queued transfer.
+        if (pendingTransfer.amount != 0) {
+            revert TransferAlreadyQueued(pendingTransfer.executeAfter);
+        }
+
         uint256 balance = address(this).balance;
         bool thresholdMet = balance >= bridgeThreshold;
         bool periodElapsed = block.timestamp >= lastBridgeTimestamp + maxBridgePeriod;
