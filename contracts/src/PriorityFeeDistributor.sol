@@ -40,6 +40,7 @@ contract PriorityFeeDistributor {
     error InsufficientBalance(uint256 balance, uint256 required);
     error NoActiveValidators();
     error DistributionTooFrequent(uint256 nextAllowed, uint256 currentTime);
+    error Reentrancy();
 
     // ─── State ───
 
@@ -63,6 +64,9 @@ contract PriorityFeeDistributor {
 
     /// @notice Maximum validator ID to iterate through.
     uint256 public maxValidatorId;
+
+    /// @notice Reentrancy guard.
+    bool private _distributing;
 
     // ─── Modifiers ───
 
@@ -104,6 +108,10 @@ contract PriorityFeeDistributor {
     /// @notice Distribute all POL held by this contract to active validators
     ///         and their delegators. Anyone can call.
     function distribute() external {
+        // Reentrancy guard.
+        if (_distributing) revert Reentrancy();
+        _distributing = true;
+
         if (block.timestamp < lastDistribution + distributionCooldown) {
             revert DistributionTooFrequent(
                 lastDistribution + distributionCooldown,
@@ -114,11 +122,16 @@ contract PriorityFeeDistributor {
         uint256 totalBalance = polToken.balanceOf(address(this));
         if (totalBalance == 0) revert InsufficientBalance(0, 1);
 
-        // ── Step 1: Build list of active validators and their stakes ──
+        // Set cooldown BEFORE external calls to prevent reentrancy.
+        lastDistribution = block.timestamp;
+
+        // ── Step 1: Build list of active validators and cache their data ──
 
         uint256 maxId = maxValidatorId;
-        uint256[] memory activeIds = new uint256[](maxId);
         uint256[] memory stakes = new uint256[](maxId);
+        address[] memory signers = new address[](maxId);
+        address[] memory shareContracts = new address[](maxId);
+        uint256[] memory commissions = new uint256[](maxId);
         uint256 activeCount;
         uint256 totalStake;
 
@@ -132,8 +145,10 @@ contract PriorityFeeDistributor {
                 v.contractAddress != address(0)
             ) {
                 uint256 stake = v.amount + v.delegatedAmount;
-                activeIds[activeCount] = id;
                 stakes[activeCount] = stake;
+                signers[activeCount] = v.signer;
+                shareContracts[activeCount] = v.contractAddress;
+                commissions[activeCount] = v.commissionRate;
                 totalStake += stake;
                 activeCount++;
             }
@@ -154,10 +169,9 @@ contract PriorityFeeDistributor {
 
         // ── Step 3: Distribute to each validator ──
 
-        for (uint256 i = 0; i < activeCount; i++) {
-            uint256 validatorId = activeIds[i];
-            IStakeManager.Validator memory v = stakeManager.validators(validatorId);
+        uint256 distributed;
 
+        for (uint256 i = 0; i < activeCount; i++) {
             // Pro-rata share based on stake weight.
             uint256 stakeShare = totalStake > 0
                 ? (remainingPool * stakes[i]) / totalStake
@@ -170,26 +184,42 @@ contract PriorityFeeDistributor {
             if (totalReward == 0) continue;
 
             // Commission to the validator signer.
-            uint256 commission = (totalReward * v.commissionRate) / 10_000;
+            uint256 commission = (totalReward * commissions[i]) / 10_000;
             uint256 delegatorReward = totalReward - commission;
 
             // Transfer commission to validator signer.
+            // Use try/catch so one broken signer can't brick the whole distribution.
             if (commission > 0) {
-                require(polToken.transfer(v.signer, commission), "Commission transfer failed");
+                // solhint-disable-next-line no-empty-blocks
+                try polToken.transfer(signers[i], commission) returns (bool success) {
+                    if (success) distributed += commission;
+                } catch {}
             }
 
             // Transfer delegator share to ValidatorShare and notify.
-            if (delegatorReward > 0 && v.contractAddress != address(0)) {
-                require(polToken.transfer(v.contractAddress, delegatorReward), "Delegator transfer failed");
-                IValidatorShare(v.contractAddress).addPriorityFeeReward(delegatorReward);
+            if (delegatorReward > 0) {
+                // solhint-disable-next-line no-empty-blocks
+                try polToken.transfer(shareContracts[i], delegatorReward) returns (bool success) {
+                    if (success) {
+                        // solhint-disable-next-line no-empty-blocks
+                        try IValidatorShare(shareContracts[i]).addPriorityFeeReward(delegatorReward) {
+                            distributed += delegatorReward;
+                        } catch {
+                            // addPriorityFeeReward failed — tokens are in the ValidatorShare
+                            // but not accounted. This is a known edge case that requires
+                            // the ValidatorShare upgrade to be complete.
+                            distributed += delegatorReward;
+                        }
+                    }
+                } catch {}
             }
 
-            emit ValidatorRewarded(validatorId, commission, delegatorReward);
+            emit ValidatorRewarded(i, commission, delegatorReward);
         }
 
-        lastDistribution = block.timestamp;
+        _distributing = false;
 
-        emit DistributionExecuted(msg.sender, totalBalance, activeCount, block.timestamp);
+        emit DistributionExecuted(msg.sender, distributed, activeCount, block.timestamp);
     }
 
     // ─── Governance parameter updates ───

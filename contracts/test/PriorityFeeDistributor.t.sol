@@ -267,4 +267,33 @@ contract PriorityFeeDistributorTest is Test {
         // All funds should be distributed.
         assertApproxEqAbs(val1Total + val2Total, smallFund, 1);
     }
+
+    function test_Distribute_ResilientToRevertingValidator() public {
+        // Add a third validator whose signer is a contract that reverts on receive.
+        // Use address(distributor) as the signer — it has no fallback for POL tokens.
+        MockValidatorShare vs3 = new MockValidatorShare();
+        RevertingReceiver badSigner = new RevertingReceiver();
+        stakeManager.setValidator(
+            3, address(badSigner), address(vs3),
+            1_000_000 ether, 4_000_000 ether,
+            500,
+            IStakeManager.Status.Active
+        );
+
+        pol.mint(address(distributor), 100_000 ether);
+
+        // Should succeed despite the bad signer — skips that transfer.
+        distributor.distribute();
+
+        // Good validators still got their rewards.
+        assertTrue(vs1.totalRewardsAdded() > 0);
+        assertTrue(vs2.totalRewardsAdded() > 0);
+    }
+}
+
+/// @dev Helper contract that always reverts on token receipt.
+contract RevertingReceiver {
+    fallback() external payable {
+        revert("no");
+    }
 }

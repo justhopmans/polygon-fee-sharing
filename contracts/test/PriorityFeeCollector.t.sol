@@ -148,6 +148,44 @@ contract PriorityFeeCollectorTest is Test {
         assertEq(amount, 0);
     }
 
+    function test_CancelQueue_ByGovernance() public {
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+
+        // Governance can cancel immediately (before timelock).
+        vm.prank(governance);
+        collector.cancelQueue();
+
+        (uint256 amount, ) = collector.pendingTransfer();
+        assertEq(amount, 0);
+
+        // Can queue again after cancel.
+        collector.queueBridge();
+        (amount, ) = collector.pendingTransfer();
+        assertEq(amount, THRESHOLD);
+    }
+
+    function test_CancelQueue_ByAnyone_AfterTimelock() public {
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+
+        // Non-governance cannot cancel before timelock.
+        vm.expectRevert(PriorityFeeCollector.NoCancelBeforeTimelock.selector);
+        collector.cancelQueue();
+
+        // After timelock, anyone can cancel.
+        vm.warp(block.timestamp + TIMELOCK);
+        collector.cancelQueue();
+
+        (uint256 amount, ) = collector.pendingTransfer();
+        assertEq(amount, 0);
+    }
+
+    function test_CancelQueue_RevertsNoQueue() public {
+        vm.expectRevert(PriorityFeeCollector.NoPendingTransfer.selector);
+        collector.cancelQueue();
+    }
+
     function test_OnlyGovernance_SetThreshold() public {
         vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
         collector.setBridgeThreshold(200_000 ether);

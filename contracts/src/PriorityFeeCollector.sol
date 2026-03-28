@@ -13,6 +13,7 @@ contract PriorityFeeCollector {
 
     event BridgeInitiated(address indexed caller, uint256 amount, uint256 timestamp);
     event TimelockQueued(uint256 amount, uint256 executeAfter);
+    event TransferCancelled(uint256 amount, address indexed cancelledBy);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
 
@@ -26,6 +27,7 @@ contract PriorityFeeCollector {
     error OnlyGovernance();
     error ZeroAddress();
     error InvalidParameter();
+    error NoCancelBeforeTimelock();
 
     // ─── State ───
 
@@ -165,6 +167,25 @@ contract PriorityFeeCollector {
         emit BridgeInitiated(msg.sender, amount, block.timestamp);
     }
 
+    // ─── Cancel a queued transfer ───
+
+    /// @notice Cancel a pending bridge transfer. Anyone can call, but only
+    ///         after the timelock has expired (prevents griefing during the
+    ///         waiting period). Governance can cancel at any time.
+    function cancelQueue() external {
+        PendingTransfer memory pt = pendingTransfer;
+        if (pt.amount == 0) revert NoPendingTransfer();
+
+        // Non-governance callers can only cancel after timelock expiry
+        // (i.e., when executeBridge is also possible but keeps failing).
+        if (msg.sender != governance && block.timestamp < pt.executeAfter) {
+            revert NoCancelBeforeTimelock();
+        }
+
+        delete pendingTransfer;
+        emit TransferCancelled(pt.amount, msg.sender);
+    }
+
     // ─── Governance parameter updates ───
 
     function setBridgeThreshold(uint256 _value) external onlyGovernance {
@@ -188,6 +209,11 @@ contract PriorityFeeCollector {
     function setTimelockDuration(uint256 _value) external onlyGovernance {
         emit ParameterUpdated("timelockDuration", timelockDuration, _value);
         timelockDuration = _value;
+    }
+
+    function setBridge(address _bridge) external onlyGovernance {
+        if (_bridge == address(0)) revert ZeroAddress();
+        bridge = _bridge;
     }
 
     function setEthereumReceiver(address _receiver) external onlyGovernance {
