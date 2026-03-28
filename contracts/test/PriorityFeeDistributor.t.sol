@@ -131,7 +131,7 @@ contract PriorityFeeDistributorTest is Test {
         stakeManager.setValidator(
             1, signer1, address(vs1),
             2_000_000 ether, 8_000_000 ether,
-            500, // 5%
+            5, // 5% (Polygon stores commission as 0-100)
             IStakeManager.Status.Active
         );
 
@@ -139,7 +139,7 @@ contract PriorityFeeDistributorTest is Test {
         stakeManager.setValidator(
             2, signer2, address(vs2),
             1_000_000 ether, 4_000_000 ether,
-            1000, // 10%
+            10, // 10% (Polygon stores commission as 0-100)
             IStakeManager.Status.Active
         );
     }
@@ -191,8 +191,8 @@ contract PriorityFeeDistributorTest is Test {
         uint256 delegatorReward = vs1.totalRewardsAdded();
         uint256 total = commission + delegatorReward;
 
-        // 5% commission.
-        assertEq(commission, (total * 500) / 10_000);
+        // 5% commission (stored as 5, divided by 100).
+        assertEq(commission, (total * 5) / 100);
     }
 
     function test_Distribute_RevertsCooldown() public {
@@ -289,7 +289,7 @@ contract PriorityFeeDistributorTest is Test {
         stakeManager.setValidator(
             3, address(0x5163), address(bvs),
             1_000_000 ether, 4_000_000 ether,
-            500,
+            5, // 5% commission
             IStakeManager.Status.Active
         );
 
@@ -321,7 +321,7 @@ contract PriorityFeeDistributorTest is Test {
         stakeManager.setValidator(
             3, address(badSigner), address(vs3),
             1_000_000 ether, 4_000_000 ether,
-            500,
+            5, // 5% commission
             IStakeManager.Status.Active
         );
 

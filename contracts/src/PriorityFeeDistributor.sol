@@ -191,7 +191,9 @@ contract PriorityFeeDistributor {
             if (totalReward == 0) continue;
 
             // Commission to the validator signer.
-            uint256 commission = (totalReward * commissions[i]) / 10_000;
+            // StakeManager stores commissionRate as 0-100 (percentage),
+            // with MAX_COMMISION_RATE = 100.
+            uint256 commission = (totalReward * commissions[i]) / 100;
             uint256 delegatorReward = totalReward - commission;
 
             // Transfer commission to validator signer.
