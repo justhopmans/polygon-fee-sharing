@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity 0.8.23;
 
-/// @title IStakeManager — Read-only interface for the Polygon StakeManager.
+/// @title IStakeManager - Read-only interface for the Polygon StakeManager.
 /// @notice StakeManager is NOT modified. This interface reads validator data.
 interface IStakeManager {
     /// @notice Validator status enum matching StakeManager.

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity 0.8.23;
 
-/// @title IValidatorShare — Interface for ValidatorShare with priority fee extension.
+/// @title IValidatorShare - Interface for ValidatorShare with priority fee extension.
 /// @notice Existing ValidatorShare functions are unchanged. One new function is added.
 interface IValidatorShare {
-    // ─── Existing functions (unchanged) ───
+    // --- Existing functions (unchanged) ---
 
     /// @notice Buy vouchers (delegate) to this validator.
     function buyVouchers(uint256 _amount, uint256 _minSharesToMint) external returns (uint256);
@@ -33,7 +33,7 @@ interface IValidatorShare {
     /// @notice Get total stake including delegations.
     function totalStake() external view returns (uint256, uint256);
 
-    // ─── New function for priority fee sharing ───
+    // --- New function for priority fee sharing ---
 
     /// @notice Adds priority fee rewards to the reward-per-share accumulator.
     /// @dev Can only be called by the PriorityFeeDistributor contract.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity 0.8.23;
 
-/// @title PriorityFeeCollector — Deployed on Polygon PoS.
+/// @title PriorityFeeCollector - Deployed on Polygon PoS.
 /// @notice Accumulates priority fees paid by transactions, then bridges them
 ///         to Ethereum via the native PoS bridge. Fully permissionless.
 ///
@@ -9,7 +9,7 @@ pragma solidity 0.8.23;
 ///      priority-fee recipient (or fees are forwarded here by a minimal wrapper).
 ///      Anyone can trigger bridging once the threshold is met.
 contract PriorityFeeCollector {
-    // ─── Events ───
+    // --- Events ---
 
     event BridgeInitiated(address indexed caller, uint256 amount, uint256 timestamp);
     event TimelockQueued(uint256 amount, uint256 executeAfter);
@@ -17,7 +17,7 @@ contract PriorityFeeCollector {
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
 
-    // ─── Errors ───
+    // --- Errors ---
 
     error BelowThreshold(uint256 balance, uint256 threshold);
     error TimelockNotReady(uint256 executeAfter, uint256 currentTime);
@@ -30,7 +30,7 @@ contract PriorityFeeCollector {
     error NoCancelBeforeTimelock();
     error CancelTooEarly(uint256 cancelableAfter, uint256 currentTime);
 
-    // ─── Constants ───
+    // --- Constants ---
 
     /// @notice Grace period after timelock expiry during which only executeBridge
     ///         can be called (not cancelQueue). Prevents cancel front-running.
@@ -45,7 +45,7 @@ contract PriorityFeeCollector {
     /// @notice Maximum allowed bridge period to prevent overflow lockout.
     uint256 public constant MAX_BRIDGE_PERIOD = 30 days;
 
-    // ─── State ───
+    // --- State ---
 
     /// @notice Protocol Council multisig or governance timelock on Polygon PoS.
     address public governance;
@@ -74,7 +74,7 @@ contract PriorityFeeCollector {
     /// @notice Timestamp of the last successful bridge.
     uint256 public lastBridgeTimestamp;
 
-    // ─── Timelock state ───
+    // --- Timelock state ---
 
     struct PendingTransfer {
         uint256 amount;
@@ -83,14 +83,14 @@ contract PriorityFeeCollector {
 
     PendingTransfer public pendingTransfer;
 
-    // ─── Modifiers ───
+    // --- Modifiers ---
 
     modifier onlyGovernance() {
         if (msg.sender != governance) revert OnlyGovernance();
         _;
     }
 
-    // ─── Constructor ───
+    // --- Constructor ---
 
     /// @param _governance       Protocol Council address on Polygon PoS.
     /// @param _ethereumReceiver PriorityFeeDistributor address on Ethereum.
@@ -122,12 +122,12 @@ contract PriorityFeeCollector {
         lastBridgeTimestamp = block.timestamp;
     }
 
-    // ─── Receive priority fees ───
+    // --- Receive priority fees ---
 
     /// @notice Accepts native POL sent as priority fees.
     receive() external payable {}
 
-    // ─── Permissionless bridge flow (two-step with timelock) ───
+    // --- Permissionless bridge flow (two-step with timelock) ---
 
     /// @notice Step 1: Queue a bridge transfer. Anyone can call.
     /// @dev Requires balance >= threshold OR maxBridgePeriod elapsed.
@@ -186,7 +186,7 @@ contract PriorityFeeCollector {
         emit BridgeInitiated(msg.sender, amount, block.timestamp);
     }
 
-    // ─── Cancel a queued transfer ───
+    // --- Cancel a queued transfer ---
 
     /// @notice Cancel a pending bridge transfer. Anyone can call, but only
     ///         after timelock + grace period has expired (prevents front-running
@@ -209,7 +209,7 @@ contract PriorityFeeCollector {
         emit TransferCancelled(pt.amount, msg.sender);
     }
 
-    // ─── Governance parameter updates ───
+    // --- Governance parameter updates ---
 
     function setBridgeThreshold(uint256 _value) external onlyGovernance {
         if (_value == 0) revert InvalidParameter();

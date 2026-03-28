@@ -5,7 +5,7 @@ import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {IValidatorShare} from "./interfaces/IValidatorShare.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 
-/// @title PriorityFeeDistributor — Deployed on Ethereum Mainnet.
+/// @title PriorityFeeDistributor - Deployed on Ethereum Mainnet.
 /// @notice Receives bridged POL from PriorityFeeCollector and distributes it
 ///         to validators and their delegators via ValidatorShare contracts.
 ///
@@ -16,7 +16,7 @@ import {IERC20} from "./interfaces/IERC20.sol";
 ///      4. The rest goes to ValidatorShare.addPriorityFeeReward() so
 ///         delegators earn proportionally via the existing reward accumulator.
 contract PriorityFeeDistributor {
-    // ─── Events ───
+    // --- Events ---
 
     event DistributionExecuted(
         address indexed caller,
@@ -33,7 +33,7 @@ contract PriorityFeeDistributor {
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
 
-    // ─── Errors ───
+    // --- Errors ---
 
     error OnlyGovernance();
     error ZeroAddress();
@@ -43,7 +43,7 @@ contract PriorityFeeDistributor {
     error DistributionTooFrequent(uint256 nextAllowed, uint256 currentTime);
     error Reentrancy();
 
-    // ─── State ───
+    // --- State ---
 
     /// @notice Maximum distribution cooldown to prevent overflow lockout.
     uint256 public constant MAX_DISTRIBUTION_COOLDOWN = 30 days;
@@ -75,14 +75,14 @@ contract PriorityFeeDistributor {
     /// @notice Reentrancy guard.
     bool private _distributing;
 
-    // ─── Modifiers ───
+    // --- Modifiers ---
 
     modifier onlyGovernance() {
         if (msg.sender != governance) revert OnlyGovernance();
         _;
     }
 
-    // ─── Constructor ───
+    // --- Constructor ---
 
     /// @param _governance            Protocol Council on Ethereum.
     /// @param _polToken              POL token address on Ethereum.
@@ -110,7 +110,7 @@ contract PriorityFeeDistributor {
         maxValidatorId = _maxValidatorId;
     }
 
-    // ─── Core distribution (permissionless) ───
+    // --- Core distribution (permissionless) ---
 
     /// @notice Distribute all POL held by this contract to active validators
     ///         and their delegators. Anyone can call.
@@ -132,7 +132,7 @@ contract PriorityFeeDistributor {
         // Set cooldown BEFORE external calls to prevent reentrancy.
         lastDistribution = block.timestamp;
 
-        // ── Step 1: Build list of active validators and cache their data ──
+        // -- Step 1: Build list of active validators and cache their data --
 
         uint256 maxId = maxValidatorId;
         uint256[] memory stakes = new uint256[](maxId);
@@ -163,7 +163,7 @@ contract PriorityFeeDistributor {
 
         if (activeCount == 0) revert NoActiveValidators();
 
-        // ── Step 2: Calculate base rewards total ──
+        // -- Step 2: Calculate base rewards total --
 
         uint256 totalBaseRewards = baseRewardPerValidator * activeCount;
 
@@ -174,7 +174,7 @@ contract PriorityFeeDistributor {
 
         uint256 remainingPool = totalBalance - totalBaseRewards;
 
-        // ── Step 3: Distribute to each validator ──
+        // -- Step 3: Distribute to each validator --
 
         uint256 distributed;
 
@@ -213,7 +213,7 @@ contract PriorityFeeDistributor {
             //
             // Strategy: transfer + addPriorityFeeReward in an inner call that
             // reverts entirely if addPriorityFeeReward fails. We use a helper
-            // that does both steps — if addPriorityFeeReward reverts, the transfer
+            // that does both steps - if addPriorityFeeReward reverts, the transfer
             // is also reverted because it's the same call context.
             if (delegatorReward > 0) {
                 // solhint-disable-next-line no-empty-blocks
@@ -234,7 +234,7 @@ contract PriorityFeeDistributor {
         emit DistributionExecuted(msg.sender, distributed, activeCount, block.timestamp);
     }
 
-    // ─── Atomic transfer + notification ───
+    // --- Atomic transfer + notification ---
 
     /// @notice Transfers POL to a ValidatorShare and calls addPriorityFeeReward.
     /// @dev This is an external function called via this.transferAndNotify() so
@@ -247,7 +247,7 @@ contract PriorityFeeDistributor {
         IValidatorShare(_validatorShare).addPriorityFeeReward(_amount);
     }
 
-    // ─── Governance parameter updates ───
+    // --- Governance parameter updates ---
 
     function setBaseRewardPerValidator(uint256 _value) external onlyGovernance {
         emit ParameterUpdated("baseRewardPerValidator", baseRewardPerValidator, _value);
@@ -280,11 +280,11 @@ contract PriorityFeeDistributor {
         pendingGovernance = address(0);
     }
 
-    // ─── Emergency recovery ───
+    // --- Emergency recovery ---
 
     /// @notice Recover tokens accidentally sent to this contract.
     /// @dev Only governance. Cannot be used during normal operation to
-    ///      extract distribution funds — that would require social consensus.
+    ///      extract distribution funds - that would require social consensus.
     function recoverTokens(address _token, address _to, uint256 _amount) external onlyGovernance {
         if (_to == address(0)) revert ZeroAddress();
         require(IERC20(_token).transfer(_to, _amount), "Recovery transfer failed");
