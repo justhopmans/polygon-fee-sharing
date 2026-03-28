@@ -45,8 +45,14 @@ contract PriorityFeeDistributor {
 
     // ─── State ───
 
+    /// @notice Maximum distribution cooldown to prevent overflow lockout.
+    uint256 public constant MAX_DISTRIBUTION_COOLDOWN = 30 days;
+
     /// @notice Protocol Council multisig or governance timelock on Ethereum.
     address public governance;
+
+    /// @notice Pending governance address for two-step transfer.
+    address public pendingGovernance;
 
     /// @notice The POL token contract on Ethereum.
     IERC20 public immutable polToken;
@@ -198,31 +204,24 @@ contract PriorityFeeDistributor {
             }
 
             // Transfer delegator share to ValidatorShare and notify.
-            // We must ensure addPriorityFeeReward succeeds, otherwise
-            // tokens would be stuck in ValidatorShare with no claim path.
-            // If either step fails, tokens stay in the distributor for
-            // the next cycle (or recovery).
+            // IMPORTANT: We must call addPriorityFeeReward atomically with the
+            // transfer. If addPriorityFeeReward would fail, we must NOT transfer,
+            // because tokens sent to ValidatorShare without updating rewardPerShare
+            // are permanently stuck (no approval for transferFrom recovery).
+            //
+            // Strategy: transfer + addPriorityFeeReward in an inner call that
+            // reverts entirely if addPriorityFeeReward fails. We use a helper
+            // that does both steps — if addPriorityFeeReward reverts, the transfer
+            // is also reverted because it's the same call context.
             if (delegatorReward > 0) {
                 // solhint-disable-next-line no-empty-blocks
-                try polToken.transfer(shareContracts[i], delegatorReward) returns (bool transferOk) {
-                    if (transferOk) {
-                        // solhint-disable-next-line no-empty-blocks
-                        try IValidatorShare(shareContracts[i]).addPriorityFeeReward(delegatorReward) {
-                            distributed += delegatorReward;
-                        } catch {
-                            // addPriorityFeeReward failed. Tokens are now in ValidatorShare
-                            // with no claim path. Pull them back.
-                            // solhint-disable-next-line no-empty-blocks
-                            try polToken.transferFrom(shareContracts[i], address(this), delegatorReward) {
-                                // Recovered successfully — tokens stay in distributor for next cycle.
-                            } catch {
-                                // Can't recover. Tokens are stuck. Emit event for off-chain tracking.
-                                emit ValidatorRewardFailed(i, delegatorReward);
-                                distributed += delegatorReward; // count as spent to avoid double-accounting
-                            }
-                        }
-                    }
-                } catch {}
+                try this.transferAndNotify(shareContracts[i], delegatorReward) {
+                    distributed += delegatorReward;
+                } catch {
+                    // Both transfer and notification failed atomically.
+                    // Tokens stay in distributor for next cycle.
+                    emit ValidatorRewardFailed(i, delegatorReward);
+                }
             }
 
             emit ValidatorRewarded(i, commission, delegatorReward);
@@ -233,6 +232,19 @@ contract PriorityFeeDistributor {
         emit DistributionExecuted(msg.sender, distributed, activeCount, block.timestamp);
     }
 
+    // ─── Atomic transfer + notification ───
+
+    /// @notice Transfers POL to a ValidatorShare and calls addPriorityFeeReward.
+    /// @dev This is an external function called via this.transferAndNotify() so
+    ///      that try/catch reverts BOTH the transfer and the notification atomically.
+    ///      If addPriorityFeeReward fails, the transfer is also rolled back.
+    ///      Can only be called by this contract.
+    function transferAndNotify(address _validatorShare, uint256 _amount) external {
+        require(msg.sender == address(this), "Only self");
+        require(polToken.transfer(_validatorShare, _amount), "Transfer failed");
+        IValidatorShare(_validatorShare).addPriorityFeeReward(_amount);
+    }
+
     // ─── Governance parameter updates ───
 
     function setBaseRewardPerValidator(uint256 _value) external onlyGovernance {
@@ -241,6 +253,7 @@ contract PriorityFeeDistributor {
     }
 
     function setDistributionCooldown(uint256 _value) external onlyGovernance {
+        if (_value > MAX_DISTRIBUTION_COOLDOWN) revert InvalidParameter();
         emit ParameterUpdated("distributionCooldown", distributionCooldown, _value);
         distributionCooldown = _value;
     }
@@ -251,10 +264,18 @@ contract PriorityFeeDistributor {
         maxValidatorId = _value;
     }
 
+    /// @notice Step 1: Propose a new governance address. Must be accepted.
     function transferGovernance(address _newGov) external onlyGovernance {
         if (_newGov == address(0)) revert ZeroAddress();
-        emit GovernanceTransferred(governance, _newGov);
-        governance = _newGov;
+        pendingGovernance = _newGov;
+    }
+
+    /// @notice Step 2: New governance accepts ownership.
+    function acceptGovernance() external {
+        if (msg.sender != pendingGovernance) revert OnlyGovernance();
+        emit GovernanceTransferred(governance, msg.sender);
+        governance = msg.sender;
+        pendingGovernance = address(0);
     }
 
     // ─── Emergency recovery ───

@@ -204,13 +204,25 @@ contract PriorityFeeCollectorTest is Test {
         assertEq(address(collector).balance, 0);
     }
 
-    function test_SetTimelockDuration_CappedAtMax() public {
+    function test_SetTimelockDuration_BoundedMinMax() public {
+        // Below minimum (1 hour).
         vm.prank(governance);
         vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
-        collector.setTimelockDuration(8 days); // exceeds MAX_TIMELOCK_DURATION (7 days)
+        collector.setTimelockDuration(30 minutes);
 
+        // Above maximum (7 days).
         vm.prank(governance);
-        collector.setTimelockDuration(7 days); // exactly at max, should work
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        collector.setTimelockDuration(8 days);
+
+        // At minimum — works.
+        vm.prank(governance);
+        collector.setTimelockDuration(1 hours);
+        assertEq(collector.timelockDuration(), 1 hours);
+
+        // At maximum — works.
+        vm.prank(governance);
+        collector.setTimelockDuration(7 days);
         assertEq(collector.timelockDuration(), 7 days);
     }
 
@@ -228,12 +240,28 @@ contract PriorityFeeCollectorTest is Test {
         assertEq(collector.bridgeThreshold(), 200_000 ether);
     }
 
-    function test_OnlyGovernance_TransferGovernance() public {
+    function test_TwoStepGovernanceTransfer() public {
         address newGov = address(0xBEEF);
 
+        // Step 1: Propose.
         vm.prank(governance);
         collector.transferGovernance(newGov);
+        // Governance hasn't changed yet.
+        assertEq(collector.governance(), governance);
+        assertEq(collector.pendingGovernance(), newGov);
+
+        // Step 2: Accept.
+        vm.prank(newGov);
+        collector.acceptGovernance();
         assertEq(collector.governance(), newGov);
+        assertEq(collector.pendingGovernance(), address(0));
+    }
+
+    function test_AcceptGovernance_RevertsIfNotPending() public {
+        address rando = address(0xBAD);
+        vm.prank(rando);
+        vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
+        collector.acceptGovernance();
     }
 
     function test_RevertZeroAddresses() public {

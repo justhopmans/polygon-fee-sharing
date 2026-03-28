@@ -36,13 +36,22 @@ contract PriorityFeeCollector {
     ///         can be called (not cancelQueue). Prevents cancel front-running.
     uint256 public constant EXECUTE_GRACE_PERIOD = 1 hours;
 
+    /// @notice Minimum timelock to prevent reentrant drain via bridge callback.
+    uint256 public constant MIN_TIMELOCK_DURATION = 1 hours;
+
     /// @notice Maximum allowed timelock duration to prevent permanent lockup.
     uint256 public constant MAX_TIMELOCK_DURATION = 7 days;
+
+    /// @notice Maximum allowed bridge period to prevent overflow lockout.
+    uint256 public constant MAX_BRIDGE_PERIOD = 30 days;
 
     // ─── State ───
 
     /// @notice Protocol Council multisig or governance timelock on Polygon PoS.
     address public governance;
+
+    /// @notice Pending governance address for two-step transfer.
+    address public pendingGovernance;
 
     /// @notice Minimum POL balance before bridging is allowed.
     uint256 public bridgeThreshold;
@@ -209,7 +218,7 @@ contract PriorityFeeCollector {
     }
 
     function setMaxBridgePeriod(uint256 _value) external onlyGovernance {
-        if (_value == 0) revert InvalidParameter();
+        if (_value == 0 || _value > MAX_BRIDGE_PERIOD) revert InvalidParameter();
         emit ParameterUpdated("maxBridgePeriod", maxBridgePeriod, _value);
         maxBridgePeriod = _value;
     }
@@ -221,7 +230,7 @@ contract PriorityFeeCollector {
     }
 
     function setTimelockDuration(uint256 _value) external onlyGovernance {
-        if (_value > MAX_TIMELOCK_DURATION) revert InvalidParameter();
+        if (_value < MIN_TIMELOCK_DURATION || _value > MAX_TIMELOCK_DURATION) revert InvalidParameter();
         emit ParameterUpdated("timelockDuration", timelockDuration, _value);
         timelockDuration = _value;
     }
@@ -236,9 +245,17 @@ contract PriorityFeeCollector {
         ethereumReceiver = _receiver;
     }
 
+    /// @notice Step 1: Propose a new governance address. Must be accepted.
     function transferGovernance(address _newGov) external onlyGovernance {
         if (_newGov == address(0)) revert ZeroAddress();
-        emit GovernanceTransferred(governance, _newGov);
-        governance = _newGov;
+        pendingGovernance = _newGov;
+    }
+
+    /// @notice Step 2: New governance accepts ownership.
+    function acceptGovernance() external {
+        if (msg.sender != pendingGovernance) revert OnlyGovernance();
+        emit GovernanceTransferred(governance, msg.sender);
+        governance = msg.sender;
+        pendingGovernance = address(0);
     }
 }

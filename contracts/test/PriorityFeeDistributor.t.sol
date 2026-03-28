@@ -283,6 +283,36 @@ contract PriorityFeeDistributorTest is Test {
         assertApproxEqAbs(val1Total + val2Total, smallFund, 1);
     }
 
+    function test_Distribute_BrokenAddPriorityFeeReward_TokensNotStuck() public {
+        // Validator 3 has a ValidatorShare where addPriorityFeeReward reverts.
+        BrokenValidatorShare bvs = new BrokenValidatorShare();
+        stakeManager.setValidator(
+            3, address(0x5163), address(bvs),
+            1_000_000 ether, 4_000_000 ether,
+            500,
+            IStakeManager.Status.Active
+        );
+
+        uint256 fundAmount = 100_000 ether;
+        pol.mint(address(distributor), fundAmount);
+
+        uint256 distributorBalBefore = pol.balanceOf(address(distributor));
+        distributor.distribute();
+        uint256 distributorBalAfter = pol.balanceOf(address(distributor));
+
+        // The broken validator's share should stay in the distributor
+        // (not stuck in the BrokenValidatorShare contract).
+        uint256 brokenVsBalance = pol.balanceOf(address(bvs));
+        assertEq(brokenVsBalance, 0, "Tokens should NOT be in broken ValidatorShare");
+
+        // Tokens for the broken validator should remain in distributor.
+        assertTrue(distributorBalAfter > 0, "Some tokens should remain for retry");
+
+        // Good validators still got their rewards.
+        assertTrue(vs1.totalRewardsAdded() > 0, "vs1 should have rewards");
+        assertTrue(vs2.totalRewardsAdded() > 0, "vs2 should have rewards");
+    }
+
     function test_Distribute_ResilientToRevertingValidator() public {
         // Add a third validator whose signer is a contract that reverts on receive.
         // Use address(distributor) as the signer — it has no fallback for POL tokens.
