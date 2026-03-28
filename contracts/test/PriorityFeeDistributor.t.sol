@@ -45,6 +45,21 @@ contract MockValidatorShare {
     }
 }
 
+/// @dev Mock ValidatorShare where addPriorityFeeReward always reverts.
+///      Simulates a ValidatorShare that hasn't been upgraded yet.
+contract BrokenValidatorShare {
+    mapping(address => uint256) public allowances;
+
+    function addPriorityFeeReward(uint256) external pure {
+        revert("not upgraded");
+    }
+
+    // Allow transferFrom so distributor can recover tokens.
+    function approve(address spender, uint256 amount) external {
+        allowances[spender] = amount;
+    }
+}
+
 /// @dev Mock StakeManager returning configurable validator data.
 contract MockStakeManager {
     mapping(uint256 => IStakeManager.Validator) public _validators;

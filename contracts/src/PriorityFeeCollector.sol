@@ -28,6 +28,16 @@ contract PriorityFeeCollector {
     error ZeroAddress();
     error InvalidParameter();
     error NoCancelBeforeTimelock();
+    error CancelTooEarly(uint256 cancelableAfter, uint256 currentTime);
+
+    // ─── Constants ───
+
+    /// @notice Grace period after timelock expiry during which only executeBridge
+    ///         can be called (not cancelQueue). Prevents cancel front-running.
+    uint256 public constant EXECUTE_GRACE_PERIOD = 1 hours;
+
+    /// @notice Maximum allowed timelock duration to prevent permanent lockup.
+    uint256 public constant MAX_TIMELOCK_DURATION = 7 days;
 
     // ─── State ───
 
@@ -170,16 +180,20 @@ contract PriorityFeeCollector {
     // ─── Cancel a queued transfer ───
 
     /// @notice Cancel a pending bridge transfer. Anyone can call, but only
-    ///         after the timelock has expired (prevents griefing during the
-    ///         waiting period). Governance can cancel at any time.
+    ///         after timelock + grace period has expired (prevents front-running
+    ///         executeBridge). Governance can cancel at any time.
     function cancelQueue() external {
         PendingTransfer memory pt = pendingTransfer;
         if (pt.amount == 0) revert NoPendingTransfer();
 
-        // Non-governance callers can only cancel after timelock expiry
-        // (i.e., when executeBridge is also possible but keeps failing).
-        if (msg.sender != governance && block.timestamp < pt.executeAfter) {
-            revert NoCancelBeforeTimelock();
+        if (msg.sender != governance) {
+            // Non-governance must wait for timelock + grace period.
+            // This gives executeBridge a 1-hour exclusive window after timelock
+            // expiry, preventing cancel front-running attacks.
+            uint256 cancelableAfter = pt.executeAfter + EXECUTE_GRACE_PERIOD;
+            if (block.timestamp < cancelableAfter) {
+                revert CancelTooEarly(cancelableAfter, block.timestamp);
+            }
         }
 
         delete pendingTransfer;
@@ -207,6 +221,7 @@ contract PriorityFeeCollector {
     }
 
     function setTimelockDuration(uint256 _value) external onlyGovernance {
+        if (_value > MAX_TIMELOCK_DURATION) revert InvalidParameter();
         emit ParameterUpdated("timelockDuration", timelockDuration, _value);
         timelockDuration = _value;
     }

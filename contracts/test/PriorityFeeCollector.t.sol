@@ -165,20 +165,53 @@ contract PriorityFeeCollectorTest is Test {
         assertEq(amount, THRESHOLD);
     }
 
-    function test_CancelQueue_ByAnyone_AfterTimelock() public {
+    function test_CancelQueue_ByAnyone_AfterGracePeriod() public {
         vm.deal(address(collector), THRESHOLD);
         collector.queueBridge();
 
         // Non-governance cannot cancel before timelock.
-        vm.expectRevert(PriorityFeeCollector.NoCancelBeforeTimelock.selector);
+        vm.expectRevert();
         collector.cancelQueue();
 
-        // After timelock, anyone can cancel.
+        // After timelock but within grace period, still cannot cancel.
         vm.warp(block.timestamp + TIMELOCK);
+        vm.expectRevert();
+        collector.cancelQueue();
+
+        // After timelock + grace period, anyone can cancel.
+        vm.warp(block.timestamp + collector.EXECUTE_GRACE_PERIOD());
         collector.cancelQueue();
 
         (uint256 amount, ) = collector.pendingTransfer();
         assertEq(amount, 0);
+    }
+
+    function test_CancelQueue_CannotFrontrunExecute() public {
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+
+        // Warp to exactly when timelock expires.
+        vm.warp(block.timestamp + TIMELOCK);
+
+        // Attacker tries to cancel — blocked by grace period.
+        address attacker = address(0xBAD);
+        vm.prank(attacker);
+        vm.expectRevert();
+        collector.cancelQueue();
+
+        // But executeBridge works fine.
+        collector.executeBridge();
+        assertEq(address(collector).balance, 0);
+    }
+
+    function test_SetTimelockDuration_CappedAtMax() public {
+        vm.prank(governance);
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        collector.setTimelockDuration(8 days); // exceeds MAX_TIMELOCK_DURATION (7 days)
+
+        vm.prank(governance);
+        collector.setTimelockDuration(7 days); // exactly at max, should work
+        assertEq(collector.timelockDuration(), 7 days);
     }
 
     function test_CancelQueue_RevertsNoQueue() public {

@@ -29,6 +29,7 @@ contract PriorityFeeDistributor {
         uint256 commission,
         uint256 delegatorReward
     );
+    event ValidatorRewardFailed(uint256 indexed validatorIndex, uint256 amount);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
 
@@ -197,18 +198,28 @@ contract PriorityFeeDistributor {
             }
 
             // Transfer delegator share to ValidatorShare and notify.
+            // We must ensure addPriorityFeeReward succeeds, otherwise
+            // tokens would be stuck in ValidatorShare with no claim path.
+            // If either step fails, tokens stay in the distributor for
+            // the next cycle (or recovery).
             if (delegatorReward > 0) {
                 // solhint-disable-next-line no-empty-blocks
-                try polToken.transfer(shareContracts[i], delegatorReward) returns (bool success) {
-                    if (success) {
+                try polToken.transfer(shareContracts[i], delegatorReward) returns (bool transferOk) {
+                    if (transferOk) {
                         // solhint-disable-next-line no-empty-blocks
                         try IValidatorShare(shareContracts[i]).addPriorityFeeReward(delegatorReward) {
                             distributed += delegatorReward;
                         } catch {
-                            // addPriorityFeeReward failed — tokens are in the ValidatorShare
-                            // but not accounted. This is a known edge case that requires
-                            // the ValidatorShare upgrade to be complete.
-                            distributed += delegatorReward;
+                            // addPriorityFeeReward failed. Tokens are now in ValidatorShare
+                            // with no claim path. Pull them back.
+                            // solhint-disable-next-line no-empty-blocks
+                            try polToken.transferFrom(shareContracts[i], address(this), delegatorReward) {
+                                // Recovered successfully — tokens stay in distributor for next cycle.
+                            } catch {
+                                // Can't recover. Tokens are stuck. Emit event for off-chain tracking.
+                                emit ValidatorRewardFailed(i, delegatorReward);
+                                distributed += delegatorReward; // count as spent to avoid double-accounting
+                            }
                         }
                     }
                 } catch {}
