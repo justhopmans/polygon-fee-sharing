@@ -106,12 +106,12 @@ contract PriorityFeeDistributorTest is Test {
     address signer2 = address(0x5162);
 
     uint256 constant BASE_REWARD = 9_500 ether; // 9,500 POL
-    uint256 constant COOLDOWN = 1 days;
-    uint256 constant MAX_VAL_ID = 10;
+    uint256 constant COOLDOWN = 7 days;
+    uint256 constant MAX_VAL_ID = 105;
 
     function setUp() public {
-        // Warp to a realistic timestamp so cooldown checks pass.
-        vm.warp(100_000);
+        // Warp past initial cooldown (7 days = 604800s) so first distribute() works.
+        vm.warp(700_000);
 
         pol = new MockPOL();
         stakeManager = new MockStakeManager();

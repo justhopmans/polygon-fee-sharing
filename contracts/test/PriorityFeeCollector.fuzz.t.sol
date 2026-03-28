@@ -22,10 +22,10 @@ contract PriorityFeeCollectorFuzzTest is Test {
     address governance = address(0x600);
     address ethReceiver = address(0xE7D);
 
-    uint256 constant THRESHOLD = 100_000 ether;
-    uint256 constant MAX_PERIOD = 7 days;
-    uint256 constant TRANSFER_CAP = 100_000 ether;
-    uint256 constant TIMELOCK = 1 days;
+    uint256 constant THRESHOLD = 500_000 ether;
+    uint256 constant MAX_PERIOD = 3 days;
+    uint256 constant TRANSFER_CAP = 1_000_000 ether;
+    uint256 constant TIMELOCK = 2 hours;
 
     function setUp() public {
         vm.warp(100_000);

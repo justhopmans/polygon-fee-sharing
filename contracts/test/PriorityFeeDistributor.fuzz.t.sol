@@ -82,11 +82,11 @@ contract PriorityFeeDistributorFuzzTest is Test {
 
     address governance = address(0x600);
     uint256 constant BASE_REWARD = 9_500 ether;
-    uint256 constant COOLDOWN = 1 days;
-    uint256 constant MAX_VAL_ID = 20;
+    uint256 constant COOLDOWN = 7 days;
+    uint256 constant MAX_VAL_ID = 105;
 
     function setUp() public {
-        vm.warp(100_000);
+        vm.warp(700_000);
 
         pol = new FuzzMockPOL();
         stakeManager = new FuzzMockStakeManager();
