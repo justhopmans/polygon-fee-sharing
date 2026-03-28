@@ -22,7 +22,7 @@ interface IStakeManager {
         address signer;
         address contractAddress; // ValidatorShare proxy
         Status status;
-        uint256 commissionRate;  // Basis points (0–10000)
+        uint256 commissionRate;  // 0-100 (percentage)
         uint256 lastCommissionUpdate;
         uint256 delegatedAmount; // Total delegated stake in wei
         uint256 initialRewardPerStake;
