@@ -271,4 +271,95 @@ contract PriorityFeeCollectorTest is Test {
             THRESHOLD, MAX_PERIOD, TRANSFER_CAP, TIMELOCK
         );
     }
+
+    function test_Constructor_RejectsInvalidParams() public {
+        // Zero threshold.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            0, MAX_PERIOD, TRANSFER_CAP, TIMELOCK
+        );
+
+        // Zero bridge period.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, 0, TRANSFER_CAP, TIMELOCK
+        );
+
+        // Bridge period exceeds max.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, 31 days, TRANSFER_CAP, TIMELOCK
+        );
+
+        // Zero transfer cap.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, MAX_PERIOD, 0, TIMELOCK
+        );
+
+        // Timelock below minimum.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, MAX_PERIOD, TRANSFER_CAP, 30 minutes
+        );
+
+        // Timelock above maximum.
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, MAX_PERIOD, TRANSFER_CAP, 8 days
+        );
+    }
+
+    function test_Pause_BlocksQueueAndExecute() public {
+        vm.prank(governance);
+        collector.setPaused(true);
+
+        vm.deal(address(collector), THRESHOLD);
+
+        vm.expectRevert("paused");
+        collector.queueBridge();
+
+        vm.expectRevert("paused");
+        collector.executeBridge();
+    }
+
+    function test_Pause_UnpauseRestoresFunction() public {
+        vm.deal(address(collector), THRESHOLD);
+
+        vm.prank(governance);
+        collector.setPaused(true);
+
+        vm.prank(governance);
+        collector.setPaused(false);
+
+        collector.queueBridge();
+        (uint256 amount, ) = collector.pendingTransfer();
+        assertEq(amount, THRESHOLD);
+    }
+
+    function test_Pause_OnlyGovernance() public {
+        vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
+        collector.setPaused(true);
+    }
+
+    function test_Pause_CancelStillWorksWhenPaused() public {
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+
+        vm.prank(governance);
+        collector.setPaused(true);
+
+        // Governance can still cancel while paused.
+        vm.prank(governance);
+        collector.cancelQueue();
+
+        (uint256 amount, ) = collector.pendingTransfer();
+        assertEq(amount, 0);
+    }
 }

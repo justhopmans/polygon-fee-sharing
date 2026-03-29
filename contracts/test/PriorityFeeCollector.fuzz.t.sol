@@ -272,6 +272,65 @@ contract PriorityFeeCollectorFuzzTest is Test {
         }
     }
 
+    // ─── Invariant: pause always blocks queue and execute ───
+
+    function testFuzz_PauseBlocksOperations(uint256 balance) public {
+        balance = bound(balance, THRESHOLD, TRANSFER_CAP);
+
+        vm.prank(governance);
+        collector.setPaused(true);
+
+        vm.deal(address(collector), balance);
+
+        vm.expectRevert("paused");
+        collector.queueBridge();
+
+        vm.expectRevert("paused");
+        collector.executeBridge();
+    }
+
+    // ─── Constructor parameter validation ───
+
+    function testFuzz_Constructor_TimelockBounds(uint256 value) public {
+        if (value < 1 hours || value > 7 days) {
+            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        }
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, MAX_PERIOD, TRANSFER_CAP, value
+        );
+    }
+
+    function testFuzz_Constructor_MaxBridgePeriodBounds(uint256 value) public {
+        if (value == 0 || value > 30 days) {
+            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        }
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, value, TRANSFER_CAP, TIMELOCK
+        );
+    }
+
+    function testFuzz_Constructor_ThresholdRejectsZero(uint256 value) public {
+        if (value == 0) {
+            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        }
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            value, MAX_PERIOD, TRANSFER_CAP, TIMELOCK
+        );
+    }
+
+    function testFuzz_Constructor_TransferCapRejectsZero(uint256 value) public {
+        if (value == 0) {
+            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        }
+        new PriorityFeeCollector(
+            governance, ethReceiver, address(bridge),
+            THRESHOLD, MAX_PERIOD, value, TIMELOCK
+        );
+    }
+
     // ─── Full lifecycle fuzz: queue → execute → re-queue → cancel → re-queue → execute ───
 
     function testFuzz_FullLifecycle(

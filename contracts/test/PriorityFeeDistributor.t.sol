@@ -313,6 +313,97 @@ contract PriorityFeeDistributorTest is Test {
         assertTrue(vs2.totalRewardsAdded() > 0, "vs2 should have rewards");
     }
 
+    function test_Distribute_ZeroStakeValidators() public {
+        // Both validators active but with 0 stake.
+        stakeManager.setValidator(
+            1, signer1, address(vs1),
+            0, 0, 5, IStakeManager.Status.Active
+        );
+        stakeManager.setValidator(
+            2, signer2, address(vs2),
+            0, 0, 10, IStakeManager.Status.Active
+        );
+
+        pol.mint(address(distributor), 100_000 ether);
+
+        // Should not revert — totalStake == 0 is handled gracefully.
+        distributor.distribute();
+
+        // Base rewards still distributed (9500 each), stake-weighted portion is 0.
+        // Validator 1: 9500 POL, 5% commission = 475 to signer, 9025 to delegators.
+        // Validator 2: 9500 POL, 10% commission = 950 to signer, 8550 to delegators.
+        uint256 totalDistributed = pol.balanceOf(signer1) + vs1.totalRewardsAdded()
+            + pol.balanceOf(signer2) + vs2.totalRewardsAdded();
+        assertEq(totalDistributed, BASE_REWARD * 2);
+
+        // Remaining (100k - 19k = 81k) stays in distributor.
+        assertEq(pol.balanceOf(address(distributor)), 100_000 ether - BASE_REWARD * 2);
+    }
+
+    function test_Constructor_RejectsInvalidParams() public {
+        // Zero maxValidatorId.
+        vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+        new PriorityFeeDistributor(
+            governance, address(pol), address(stakeManager),
+            BASE_REWARD, COOLDOWN, 0
+        );
+
+        // Cooldown exceeds max.
+        vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+        new PriorityFeeDistributor(
+            governance, address(pol), address(stakeManager),
+            BASE_REWARD, 31 days, MAX_VAL_ID
+        );
+
+        // Zero addresses.
+        vm.expectRevert(PriorityFeeDistributor.ZeroAddress.selector);
+        new PriorityFeeDistributor(
+            address(0), address(pol), address(stakeManager),
+            BASE_REWARD, COOLDOWN, MAX_VAL_ID
+        );
+    }
+
+    function test_Pause_BlocksDistribute() public {
+        vm.prank(governance);
+        distributor.setPaused(true);
+
+        pol.mint(address(distributor), 100_000 ether);
+
+        vm.expectRevert("paused");
+        distributor.distribute();
+    }
+
+    function test_Pause_UnpauseRestoresFunction() public {
+        vm.prank(governance);
+        distributor.setPaused(true);
+
+        vm.prank(governance);
+        distributor.setPaused(false);
+
+        pol.mint(address(distributor), 100_000 ether);
+        distributor.distribute();
+
+        assertTrue(vs1.totalRewardsAdded() > 0);
+    }
+
+    function test_Pause_OnlyGovernance() public {
+        vm.expectRevert(PriorityFeeDistributor.OnlyGovernance.selector);
+        distributor.setPaused(true);
+    }
+
+    function test_Pause_RecoverTokensStillWorksWhenPaused() public {
+        vm.prank(governance);
+        distributor.setPaused(true);
+
+        MockPOL other = new MockPOL();
+        other.mint(address(distributor), 1000 ether);
+
+        vm.prank(governance);
+        distributor.recoverTokens(address(other), address(0xDEAD), 1000 ether);
+
+        assertEq(other.balanceOf(address(0xDEAD)), 1000 ether);
+    }
+
     function test_Distribute_ResilientToRevertingValidator() public {
         // Add a third validator whose signer is a contract that reverts on receive.
         // Use address(distributor) as the signer — it has no fallback for POL tokens.

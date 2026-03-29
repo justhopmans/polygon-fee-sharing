@@ -499,4 +499,76 @@ contract PriorityFeeDistributorFuzzTest is Test {
             assertEq(distributor.maxValidatorId(), value);
         }
     }
+
+    // ─── Invariant: pause always blocks distribute ───
+
+    function testFuzz_PauseBlocksDistribute(uint256 fundAmount) public {
+        fundAmount = bound(fundAmount, 1 ether, 1_000_000 ether);
+
+        FuzzMockValidatorShare vs = new FuzzMockValidatorShare();
+        stakeManager.setValidator(
+            1, address(0x5161), address(vs),
+            1_000_000 ether, 4_000_000 ether,
+            5, IStakeManager.Status.Active
+        );
+
+        vm.prank(governance);
+        distributor.setPaused(true);
+
+        pol.mint(address(distributor), fundAmount);
+
+        vm.expectRevert("paused");
+        distributor.distribute();
+
+        // Unpause and verify it works.
+        vm.prank(governance);
+        distributor.setPaused(false);
+
+        distributor.distribute();
+        assertTrue(vs.totalRewardsAdded() > 0);
+    }
+
+    // ─── Constructor parameter validation ───
+
+    function testFuzz_Constructor_CooldownBounds(uint256 value) public {
+        if (value > 30 days) {
+            vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+        }
+        new PriorityFeeDistributor(
+            governance, address(pol), address(stakeManager),
+            BASE_REWARD, value, MAX_VAL_ID
+        );
+    }
+
+    function testFuzz_Constructor_MaxValidatorIdRejectsZero(uint256 value) public {
+        if (value == 0) {
+            vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+        }
+        new PriorityFeeDistributor(
+            governance, address(pol), address(stakeManager),
+            BASE_REWARD, COOLDOWN, value
+        );
+    }
+
+    // ─── Edge: zero-stake active validators ───
+
+    function testFuzz_ZeroStakeValidators_NoRevert(uint256 fundAmount) public {
+        fundAmount = bound(fundAmount, 1 ether, 1_000_000 ether);
+
+        FuzzMockValidatorShare vs = new FuzzMockValidatorShare();
+        stakeManager.setValidator(
+            1, address(0x5161), address(vs),
+            0, 0, 5, IStakeManager.Status.Active
+        );
+
+        pol.mint(address(distributor), fundAmount);
+
+        // Should not revert with zero-stake validators.
+        distributor.distribute();
+
+        // Base reward distributed if balance is sufficient, stake-weighted portion is 0.
+        uint256 distributed = pol.balanceOf(address(0x5161)) + vs.totalRewardsAdded();
+        uint256 remaining = pol.balanceOf(address(distributor));
+        assertEq(distributed + remaining, fundAmount, "Conservation violated");
+    }
 }
