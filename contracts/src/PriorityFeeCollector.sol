@@ -65,6 +65,10 @@ contract PriorityFeeCollector {
         if (_governance == address(0)) revert ZeroAddress();
         if (_ethereumReceiver == address(0)) revert ZeroAddress();
         if (_bridge == address(0)) revert ZeroAddress();
+        if (_bridgeThreshold == 0) revert InvalidParameter();
+        if (_maxBridgePeriod == 0 || _maxBridgePeriod > MAX_BRIDGE_PERIOD) revert InvalidParameter();
+        if (_transferCap == 0) revert InvalidParameter();
+        if (_timelockDuration < MIN_TIMELOCK_DURATION || _timelockDuration > MAX_TIMELOCK_DURATION) revert InvalidParameter();
 
         governance = _governance;
         ethereumReceiver = _ethereumReceiver;

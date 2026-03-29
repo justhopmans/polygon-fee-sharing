@@ -70,6 +70,8 @@ contract PriorityFeeDistributor {
         if (_governance == address(0)) revert ZeroAddress();
         if (_polToken == address(0)) revert ZeroAddress();
         if (_stakeManager == address(0)) revert ZeroAddress();
+        if (_maxValidatorId == 0) revert InvalidParameter();
+        if (_distributionCooldown > MAX_DISTRIBUTION_COOLDOWN) revert InvalidParameter();
 
         governance = _governance;
         polToken = IERC20(_polToken);
@@ -142,7 +144,7 @@ contract PriorityFeeDistributor {
 
             uint256 totalReward = totalBaseRewards > 0
                 ? baseRewardPerValidator + stakeShare
-                : (totalBalance * stakes[i]) / totalStake;
+                : totalStake > 0 ? (totalBalance * stakes[i]) / totalStake : 0;
 
             if (totalReward == 0) continue;
 
