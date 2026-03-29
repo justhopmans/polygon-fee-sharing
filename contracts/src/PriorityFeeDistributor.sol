@@ -30,6 +30,7 @@ contract PriorityFeeDistributor {
         uint256 delegatorReward
     );
     event ValidatorRewardFailed(uint256 indexed validatorIndex, uint256 amount);
+    event CallerRewarded(address indexed caller, uint256 amount);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
 
@@ -71,6 +72,12 @@ contract PriorityFeeDistributor {
 
     /// @notice Maximum validator ID to iterate through.
     uint256 public maxValidatorId;
+
+    /// @notice Caller incentive in basis points (e.g. 10 = 0.1%).
+    uint256 public callerIncentiveBps;
+
+    /// @notice Maximum caller incentive to prevent governance abuse.
+    uint256 public constant MAX_CALLER_INCENTIVE_BPS = 100; // 1%
 
     /// @notice Reentrancy guard.
     bool private _distributing;
@@ -131,6 +138,17 @@ contract PriorityFeeDistributor {
 
         // Set cooldown BEFORE external calls to prevent reentrancy.
         lastDistribution = block.timestamp;
+
+        // Pay caller incentive before distribution.
+        uint256 callerReward;
+        if (callerIncentiveBps > 0) {
+            callerReward = (totalBalance * callerIncentiveBps) / 10_000;
+            if (callerReward > 0) {
+                require(polToken.transfer(msg.sender, callerReward), "Caller reward failed");
+                totalBalance -= callerReward;
+                emit CallerRewarded(msg.sender, callerReward);
+            }
+        }
 
         // -- Step 1: Build list of active validators and cache their data --
 
@@ -264,6 +282,12 @@ contract PriorityFeeDistributor {
         if (_value == 0) revert InvalidParameter();
         emit ParameterUpdated("maxValidatorId", maxValidatorId, _value);
         maxValidatorId = _value;
+    }
+
+    function setCallerIncentiveBps(uint256 _value) external onlyGovernance {
+        if (_value > MAX_CALLER_INCENTIVE_BPS) revert InvalidParameter();
+        emit ParameterUpdated("callerIncentiveBps", callerIncentiveBps, _value);
+        callerIncentiveBps = _value;
     }
 
     /// @notice Step 1: Propose a new governance address. Must be accepted.

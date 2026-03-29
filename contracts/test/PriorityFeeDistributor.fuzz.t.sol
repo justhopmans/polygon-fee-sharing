@@ -489,6 +489,52 @@ contract PriorityFeeDistributorFuzzTest is Test {
         }
     }
 
+    function testFuzz_CallerIncentiveNeverExceedsCap(
+        uint256 fundAmount,
+        uint256 incentiveBps
+    ) public {
+        fundAmount = bound(fundAmount, 1 ether, 1_000_000_000 ether);
+        incentiveBps = bound(incentiveBps, 1, 100); // 0.01% to 1%
+
+        vm.prank(governance);
+        distributor.setCallerIncentiveBps(incentiveBps);
+
+        FuzzMockValidatorShare vs = new FuzzMockValidatorShare();
+        stakeManager.setValidator(
+            1, address(0x5161), address(vs),
+            1_000_000 ether, 4_000_000 ether,
+            5, IStakeManager.Status.Active
+        );
+
+        pol.mint(address(distributor), fundAmount);
+
+        address caller = address(0xCAFE);
+        vm.prank(caller);
+        distributor.distribute();
+
+        uint256 callerReward = pol.balanceOf(caller);
+        uint256 expectedReward = (fundAmount * incentiveBps) / 10_000;
+        assertEq(callerReward, expectedReward, "Caller reward mismatch");
+
+        // Caller + validators + dust = total fund
+        uint256 totalOut = callerReward
+            + pol.balanceOf(address(0x5161))
+            + vs.totalRewardsAdded()
+            + pol.balanceOf(address(distributor));
+        assertEq(totalOut, fundAmount, "Token conservation violated with caller incentive");
+    }
+
+    function testFuzz_SetCallerIncentiveBps_BoundsEnforced(uint256 value) public {
+        vm.prank(governance);
+        if (value > 100) {
+            vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+            distributor.setCallerIncentiveBps(value);
+        } else {
+            distributor.setCallerIncentiveBps(value);
+            assertEq(distributor.callerIncentiveBps(), value);
+        }
+    }
+
     function testFuzz_SetMaxValidatorId_ZeroReverts(uint256 value) public {
         vm.prank(governance);
         if (value == 0) {

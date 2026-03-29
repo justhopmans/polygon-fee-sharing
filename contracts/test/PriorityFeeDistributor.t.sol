@@ -313,6 +313,61 @@ contract PriorityFeeDistributorTest is Test {
         assertTrue(vs2.totalRewardsAdded() > 0, "vs2 should have rewards");
     }
 
+    function test_CallerIncentive_Basic() public {
+        // Set caller incentive to 10 bps (0.1%).
+        vm.prank(governance);
+        distributor.setCallerIncentiveBps(10);
+
+        uint256 totalFund = 100_000 ether;
+        pol.mint(address(distributor), totalFund);
+
+        address caller = address(0xCAFE);
+        vm.prank(caller);
+        distributor.distribute();
+
+        // Caller should receive 0.1% of 100k = 100 POL.
+        uint256 callerBal = pol.balanceOf(caller);
+        assertEq(callerBal, 100 ether, "Caller incentive wrong");
+
+        // Validators still get the rest.
+        assertTrue(vs1.totalRewardsAdded() > 0);
+        assertTrue(vs2.totalRewardsAdded() > 0);
+    }
+
+    function test_CallerIncentive_Zero() public {
+        // Default: no caller incentive.
+        assertEq(distributor.callerIncentiveBps(), 0);
+
+        uint256 totalFund = 100_000 ether;
+        pol.mint(address(distributor), totalFund);
+
+        address caller = address(0xCAFE);
+        vm.prank(caller);
+        distributor.distribute();
+
+        // Caller should receive nothing.
+        assertEq(pol.balanceOf(caller), 0);
+    }
+
+    function test_SetCallerIncentiveBps_OnlyGovernance() public {
+        vm.expectRevert(PriorityFeeDistributor.OnlyGovernance.selector);
+        distributor.setCallerIncentiveBps(10);
+
+        vm.prank(governance);
+        distributor.setCallerIncentiveBps(10);
+        assertEq(distributor.callerIncentiveBps(), 10);
+    }
+
+    function test_SetCallerIncentiveBps_MaxBound() public {
+        vm.prank(governance);
+        vm.expectRevert(PriorityFeeDistributor.InvalidParameter.selector);
+        distributor.setCallerIncentiveBps(101); // Over MAX_CALLER_INCENTIVE_BPS (100 = 1%)
+
+        vm.prank(governance);
+        distributor.setCallerIncentiveBps(100); // Exactly at max, should work.
+        assertEq(distributor.callerIncentiveBps(), 100);
+    }
+
     function test_Distribute_ResilientToRevertingValidator() public {
         // Add a third validator whose signer is a contract that reverts on receive.
         // Use address(distributor) as the signer — it has no fallback for POL tokens.
