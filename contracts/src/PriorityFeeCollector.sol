@@ -27,7 +27,6 @@ contract PriorityFeeCollector {
     error OnlyGovernance();
     error ZeroAddress();
     error InvalidParameter();
-    error NoCancelBeforeTimelock();
     error CancelTooEarly(uint256 cancelableAfter, uint256 currentTime);
 
     // --- Constants ---
