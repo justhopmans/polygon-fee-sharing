@@ -30,6 +30,8 @@ contract PriorityFeeDistributor {
     event ValidatorRewardFailed(uint256 indexed validatorIndex, uint256 amount);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
+    event Paused(address indexed by);
+    event Unpaused(address indexed by);
 
     error OnlyGovernance();
     error ZeroAddress();
@@ -211,6 +213,8 @@ contract PriorityFeeDistributor {
 
     function setPaused(bool _paused) external onlyGovernance {
         paused = _paused;
+        if (_paused) emit Paused(msg.sender);
+        else emit Unpaused(msg.sender);
     }
 
     function transferGovernance(address _newGov) external onlyGovernance {

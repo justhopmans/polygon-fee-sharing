@@ -10,6 +10,8 @@ contract PriorityFeeCollector {
     event TransferCancelled(uint256 amount, address indexed cancelledBy);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
     event GovernanceTransferred(address indexed oldGov, address indexed newGov);
+    event Paused(address indexed by);
+    event Unpaused(address indexed by);
 
     error BelowThreshold(uint256 balance, uint256 threshold);
     error TimelockNotReady(uint256 executeAfter, uint256 currentTime);
@@ -192,6 +194,8 @@ contract PriorityFeeCollector {
 
     function setPaused(bool _paused) external onlyGovernance {
         paused = _paused;
+        if (_paused) emit Paused(msg.sender);
+        else emit Unpaused(msg.sender);
     }
 
     function transferGovernance(address _newGov) external onlyGovernance {
