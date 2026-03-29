@@ -20,7 +20,7 @@ contract BaseFeeForwarderFuzzTest is Test {
 
     address governance = address(0x600);
     uint256 constant THRESHOLD = 100_000 ether;
-    uint256 constant TRANSFER_CAP = 5_000_000 ether;
+    uint256 constant TRANSFER_CAP = 10_000_000 ether;
 
     function setUp() public {
         mockBridge = new FuzzMockBridge();
