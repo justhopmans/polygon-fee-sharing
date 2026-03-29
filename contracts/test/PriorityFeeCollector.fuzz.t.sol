@@ -272,6 +272,41 @@ contract PriorityFeeCollectorFuzzTest is Test {
         }
     }
 
+    // ─── Caller incentive ───
+
+    function testFuzz_CallerIncentivePreservesValue(uint256 balance, uint256 incentiveBps) public {
+        balance = bound(balance, THRESHOLD, TRANSFER_CAP);
+        incentiveBps = bound(incentiveBps, 1, 100);
+
+        vm.prank(governance);
+        collector.setCallerIncentiveBps(incentiveBps);
+
+        vm.deal(address(collector), balance);
+        collector.queueBridge();
+        vm.warp(block.timestamp + TIMELOCK);
+
+        address caller = address(0xCAFE);
+        vm.deal(caller, 0);
+        vm.prank(caller);
+        collector.executeBridge();
+
+        uint256 expectedReward = (balance * incentiveBps) / 10_000;
+        assertEq(caller.balance, expectedReward, "Caller reward mismatch");
+        assertEq(bridge.totalDeposited(), balance - expectedReward, "Bridge amount mismatch");
+        assertEq(address(collector).balance, 0, "Collector should be empty");
+    }
+
+    function testFuzz_SetCallerIncentiveBps_BoundsEnforced(uint256 value) public {
+        vm.prank(governance);
+        if (value > 100) {
+            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+            collector.setCallerIncentiveBps(value);
+        } else {
+            collector.setCallerIncentiveBps(value);
+            assertEq(collector.callerIncentiveBps(), value);
+        }
+    }
+
     // ─── Full lifecycle fuzz: queue → execute → re-queue → cancel → re-queue → execute ───
 
     function testFuzz_FullLifecycle(
@@ -283,10 +318,14 @@ contract PriorityFeeCollectorFuzzTest is Test {
         balance2 = bound(balance2, THRESHOLD, TRANSFER_CAP);
         balance3 = bound(balance3, THRESHOLD, TRANSFER_CAP);
 
+        // Track time explicitly to avoid block.timestamp caching issues.
+        uint256 t = block.timestamp;
+
         // Cycle 1: queue → execute.
         vm.deal(address(collector), balance1);
         collector.queueBridge();
-        vm.warp(block.timestamp + TIMELOCK);
+        t += TIMELOCK;
+        vm.warp(t);
         collector.executeBridge();
         assertEq(address(collector).balance, 0);
 
@@ -299,7 +338,8 @@ contract PriorityFeeCollectorFuzzTest is Test {
 
         // Cycle 3: queue → execute.
         collector.queueBridge();
-        vm.warp(block.timestamp + TIMELOCK);
+        t += TIMELOCK;
+        vm.warp(t);
         collector.executeBridge();
         assertEq(address(collector).balance, 0);
 

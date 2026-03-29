@@ -12,6 +12,7 @@ contract PriorityFeeCollector {
     // --- Events ---
 
     event BridgeInitiated(address indexed caller, uint256 amount, uint256 timestamp);
+    event CallerRewarded(address indexed caller, uint256 amount);
     event TimelockQueued(uint256 amount, uint256 executeAfter);
     event TransferCancelled(uint256 amount, address indexed cancelledBy);
     event ParameterUpdated(string name, uint256 oldValue, uint256 newValue);
@@ -73,6 +74,12 @@ contract PriorityFeeCollector {
 
     /// @notice Timestamp of the last successful bridge.
     uint256 public lastBridgeTimestamp;
+
+    /// @notice Caller incentive in basis points (e.g. 10 = 0.1%).
+    uint256 public callerIncentiveBps;
+
+    /// @notice Maximum caller incentive to prevent governance abuse.
+    uint256 public constant MAX_CALLER_INCENTIVE_BPS = 100; // 1%
 
     // --- Timelock state ---
 
@@ -176,6 +183,18 @@ contract PriorityFeeCollector {
         delete pendingTransfer;
         lastBridgeTimestamp = block.timestamp;
 
+        // Pay caller incentive before bridging.
+        uint256 callerReward;
+        if (callerIncentiveBps > 0) {
+            callerReward = (amount * callerIncentiveBps) / 10_000;
+            if (callerReward > 0) {
+                amount -= callerReward;
+                (bool rewardSuccess, ) = msg.sender.call{value: callerReward}("");
+                require(rewardSuccess, "Caller reward failed");
+                emit CallerRewarded(msg.sender, callerReward);
+            }
+        }
+
         // Bridge native POL to Ethereum receiver via the PoS bridge.
         // The bridge interface accepts native value and a destination address.
         (bool success, ) = bridge.call{value: amount}(
@@ -233,6 +252,12 @@ contract PriorityFeeCollector {
         if (_value < MIN_TIMELOCK_DURATION || _value > MAX_TIMELOCK_DURATION) revert InvalidParameter();
         emit ParameterUpdated("timelockDuration", timelockDuration, _value);
         timelockDuration = _value;
+    }
+
+    function setCallerIncentiveBps(uint256 _value) external onlyGovernance {
+        if (_value > MAX_CALLER_INCENTIVE_BPS) revert InvalidParameter();
+        emit ParameterUpdated("callerIncentiveBps", callerIncentiveBps, _value);
+        callerIncentiveBps = _value;
     }
 
     function setBridge(address _bridge) external onlyGovernance {

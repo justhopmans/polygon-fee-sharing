@@ -264,6 +264,66 @@ contract PriorityFeeCollectorTest is Test {
         collector.acceptGovernance();
     }
 
+    function test_CallerIncentive_ExecuteBridge() public {
+        // Set caller incentive to 10 bps (0.1%).
+        vm.prank(governance);
+        collector.setCallerIncentiveBps(10);
+
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+        vm.warp(block.timestamp + TIMELOCK);
+
+        address caller = address(0xCAFE);
+        vm.deal(caller, 0);
+        vm.prank(caller);
+        collector.executeBridge();
+
+        // Caller should receive 0.1% of 500k = 500 POL.
+        uint256 expectedReward = (THRESHOLD * 10) / 10_000;
+        assertEq(caller.balance, expectedReward, "Caller incentive wrong");
+
+        // Bridge should receive the rest.
+        assertEq(bridge.lastAmount(), THRESHOLD - expectedReward);
+    }
+
+    function test_CallerIncentive_Zero_ExecuteBridge() public {
+        // Default: no caller incentive.
+        assertEq(collector.callerIncentiveBps(), 0);
+
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+        vm.warp(block.timestamp + TIMELOCK);
+
+        address caller = address(0xCAFE);
+        vm.deal(caller, 0);
+        vm.prank(caller);
+        collector.executeBridge();
+
+        // Caller should get nothing.
+        assertEq(caller.balance, 0);
+        // Bridge gets full amount.
+        assertEq(bridge.lastAmount(), THRESHOLD);
+    }
+
+    function test_SetCallerIncentiveBps_OnlyGovernance() public {
+        vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
+        collector.setCallerIncentiveBps(10);
+
+        vm.prank(governance);
+        collector.setCallerIncentiveBps(10);
+        assertEq(collector.callerIncentiveBps(), 10);
+    }
+
+    function test_SetCallerIncentiveBps_MaxBound() public {
+        vm.prank(governance);
+        vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
+        collector.setCallerIncentiveBps(101);
+
+        vm.prank(governance);
+        collector.setCallerIncentiveBps(100);
+        assertEq(collector.callerIncentiveBps(), 100);
+    }
+
     function test_RevertZeroAddresses() public {
         vm.expectRevert(PriorityFeeCollector.ZeroAddress.selector);
         new PriorityFeeCollector(
