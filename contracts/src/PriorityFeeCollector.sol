@@ -28,6 +28,7 @@ contract PriorityFeeCollector {
     uint256 public constant MAX_TIMELOCK_DURATION = 7 days;
     uint256 public constant MAX_BRIDGE_PERIOD = 30 days;
 
+    bool public paused;
     address public governance;
     address public pendingGovernance;
     uint256 public bridgeThreshold;
@@ -47,6 +48,11 @@ contract PriorityFeeCollector {
 
     modifier onlyGovernance() {
         if (msg.sender != governance) revert OnlyGovernance();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "paused");
         _;
     }
 
@@ -84,7 +90,7 @@ contract PriorityFeeCollector {
 
     /// @notice Queue a bridge transfer. Anyone can call.
     /// @dev Requires balance >= threshold OR maxBridgePeriod elapsed.
-    function queueBridge() external {
+    function queueBridge() external whenNotPaused {
         if (pendingTransfer.amount != 0) {
             revert TransferAlreadyQueued(pendingTransfer.executeAfter);
         }
@@ -108,7 +114,7 @@ contract PriorityFeeCollector {
     }
 
     /// @notice Execute the queued bridge transfer. Anyone can call.
-    function executeBridge() external {
+    function executeBridge() external whenNotPaused {
         PendingTransfer memory pt = pendingTransfer;
 
         if (pt.amount == 0) revert NoPendingTransfer();
@@ -182,6 +188,10 @@ contract PriorityFeeCollector {
     function setEthereumReceiver(address _receiver) external onlyGovernance {
         if (_receiver == address(0)) revert ZeroAddress();
         ethereumReceiver = _receiver;
+    }
+
+    function setPaused(bool _paused) external onlyGovernance {
+        paused = _paused;
     }
 
     function transferGovernance(address _newGov) external onlyGovernance {

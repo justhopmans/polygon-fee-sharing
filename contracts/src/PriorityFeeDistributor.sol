@@ -41,6 +41,7 @@ contract PriorityFeeDistributor {
 
     uint256 public constant MAX_DISTRIBUTION_COOLDOWN = 30 days;
 
+    bool public paused;
     address public governance;
     address public pendingGovernance;
     IERC20 public immutable polToken;
@@ -53,6 +54,11 @@ contract PriorityFeeDistributor {
 
     modifier onlyGovernance() {
         if (msg.sender != governance) revert OnlyGovernance();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "paused");
         _;
     }
 
@@ -83,7 +89,7 @@ contract PriorityFeeDistributor {
 
     /// @notice Distribute all POL held by this contract to active validators
     ///         and their delegators. Anyone can call.
-    function distribute() external {
+    function distribute() external whenNotPaused {
         if (_distributing) revert Reentrancy();
         _distributing = true;
 
@@ -201,6 +207,10 @@ contract PriorityFeeDistributor {
         if (_value == 0) revert InvalidParameter();
         emit ParameterUpdated("maxValidatorId", maxValidatorId, _value);
         maxValidatorId = _value;
+    }
+
+    function setPaused(bool _paused) external onlyGovernance {
+        paused = _paused;
     }
 
     function transferGovernance(address _newGov) external onlyGovernance {
