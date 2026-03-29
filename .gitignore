@@ -4,3 +4,11 @@ config.json
 __pycache__/
 *.pyc
 .env
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
+
+# Audit reference (not for deployment)
+contracts/etherscan-reference/
