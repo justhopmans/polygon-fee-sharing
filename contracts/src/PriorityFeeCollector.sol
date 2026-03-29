@@ -75,11 +75,11 @@ contract PriorityFeeCollector {
     /// @notice Timestamp of the last successful bridge.
     uint256 public lastBridgeTimestamp;
 
-    /// @notice Caller incentive in basis points (e.g. 10 = 0.1%).
-    uint256 public callerIncentiveBps;
+    /// @notice Caller incentive flat reward in wei per call.
+    uint256 public callerRewardPerCall;
 
-    /// @notice Maximum caller incentive to prevent governance abuse.
-    uint256 public constant MAX_CALLER_INCENTIVE_BPS = 100; // 1%
+    /// @notice Accumulated caller reward pool (funded separately).
+    uint256 public callerRewardPool;
 
     // --- Timelock state ---
 
@@ -144,7 +144,8 @@ contract PriorityFeeCollector {
             revert TransferAlreadyQueued(pendingTransfer.executeAfter);
         }
 
-        uint256 balance = address(this).balance;
+        // Exclude the caller reward pool from the bridgeable balance.
+        uint256 balance = address(this).balance - callerRewardPool;
         bool thresholdMet = balance >= bridgeThreshold;
         bool periodElapsed = block.timestamp >= lastBridgeTimestamp + maxBridgePeriod;
 
@@ -172,10 +173,9 @@ contract PriorityFeeCollector {
             revert TimelockNotReady(pt.executeAfter, block.timestamp);
         }
 
-        // Cap to actual balance in case fees were somehow withdrawn.
-        uint256 amount = pt.amount > address(this).balance
-            ? address(this).balance
-            : pt.amount;
+        // Cap to actual bridgeable balance (excluding reward pool).
+        uint256 bridgeable = address(this).balance - callerRewardPool;
+        uint256 amount = pt.amount > bridgeable ? bridgeable : pt.amount;
 
         if (amount > transferCap) revert ExceedsTransferCap(amount, transferCap);
 
@@ -183,16 +183,12 @@ contract PriorityFeeCollector {
         delete pendingTransfer;
         lastBridgeTimestamp = block.timestamp;
 
-        // Pay caller incentive before bridging.
-        uint256 callerReward;
-        if (callerIncentiveBps > 0) {
-            callerReward = (amount * callerIncentiveBps) / 10_000;
-            if (callerReward > 0) {
-                amount -= callerReward;
-                (bool rewardSuccess, ) = msg.sender.call{value: callerReward}("");
-                require(rewardSuccess, "Caller reward failed");
-                emit CallerRewarded(msg.sender, callerReward);
-            }
+        // Pay caller incentive from the separate reward pool (not from bridged funds).
+        if (callerRewardPerCall > 0 && callerRewardPool >= callerRewardPerCall) {
+            callerRewardPool -= callerRewardPerCall;
+            (bool rewardSuccess, ) = msg.sender.call{value: callerRewardPerCall}("");
+            require(rewardSuccess, "Caller reward failed");
+            emit CallerRewarded(msg.sender, callerRewardPerCall);
         }
 
         // Bridge native POL to Ethereum receiver via the PoS bridge.
@@ -254,10 +250,15 @@ contract PriorityFeeCollector {
         timelockDuration = _value;
     }
 
-    function setCallerIncentiveBps(uint256 _value) external onlyGovernance {
-        if (_value > MAX_CALLER_INCENTIVE_BPS) revert InvalidParameter();
-        emit ParameterUpdated("callerIncentiveBps", callerIncentiveBps, _value);
-        callerIncentiveBps = _value;
+    function setCallerRewardPerCall(uint256 _value) external onlyGovernance {
+        emit ParameterUpdated("callerRewardPerCall", callerRewardPerCall, _value);
+        callerRewardPerCall = _value;
+    }
+
+    /// @notice Fund the caller reward pool. Anyone can send POL to keep the system running.
+    function fundCallerRewardPool() external payable {
+        if (msg.value == 0) revert InvalidParameter();
+        callerRewardPool += msg.value;
     }
 
     function setBridge(address _bridge) external onlyGovernance {

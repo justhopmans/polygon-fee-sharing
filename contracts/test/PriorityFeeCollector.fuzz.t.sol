@@ -274,14 +274,18 @@ contract PriorityFeeCollectorFuzzTest is Test {
 
     // ─── Caller incentive ───
 
-    function testFuzz_CallerIncentivePreservesValue(uint256 balance, uint256 incentiveBps) public {
+    function testFuzz_CallerFlatFeePreservesValue(uint256 balance, uint256 reward) public {
         balance = bound(balance, THRESHOLD, TRANSFER_CAP);
-        incentiveBps = bound(incentiveBps, 1, 100);
+        reward = bound(reward, 0.01 ether, 10 ether);
 
         vm.prank(governance);
-        collector.setCallerIncentiveBps(incentiveBps);
+        collector.setCallerRewardPerCall(reward);
 
-        vm.deal(address(collector), balance);
+        // Fund pool with enough for one call.
+        collector.fundCallerRewardPool{value: reward}();
+
+        // Deal priority fees on top of the pool.
+        vm.deal(address(collector), balance + reward);
         collector.queueBridge();
         vm.warp(block.timestamp + TIMELOCK);
 
@@ -290,21 +294,39 @@ contract PriorityFeeCollectorFuzzTest is Test {
         vm.prank(caller);
         collector.executeBridge();
 
-        uint256 expectedReward = (balance * incentiveBps) / 10_000;
-        assertEq(caller.balance, expectedReward, "Caller reward mismatch");
-        assertEq(bridge.totalDeposited(), balance - expectedReward, "Bridge amount mismatch");
-        assertEq(address(collector).balance, 0, "Collector should be empty");
+        // Caller gets flat fee from pool.
+        assertEq(caller.balance, reward, "Caller reward mismatch");
+        // Bridge gets full balance (reward comes from pool, not fees).
+        assertEq(bridge.totalDeposited(), balance, "Bridge amount mismatch");
+        // Pool is now empty.
+        assertEq(collector.callerRewardPool(), 0, "Pool not drained");
     }
 
-    function testFuzz_SetCallerIncentiveBps_BoundsEnforced(uint256 value) public {
+    function testFuzz_CallerPoolLastsManyRounds(uint256 rewardPerCall, uint8 rounds) public {
+        rewardPerCall = bound(rewardPerCall, 0.001 ether, 5 ether);
+        rounds = uint8(bound(rounds, 1, 10));
+
         vm.prank(governance);
-        if (value > 100) {
-            vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
-            collector.setCallerIncentiveBps(value);
-        } else {
-            collector.setCallerIncentiveBps(value);
-            assertEq(collector.callerIncentiveBps(), value);
+        collector.setCallerRewardPerCall(rewardPerCall);
+
+        uint256 poolFund = rewardPerCall * rounds;
+        collector.fundCallerRewardPool{value: poolFund}();
+
+        for (uint256 i = 0; i < rounds; i++) {
+            vm.deal(address(collector), THRESHOLD + collector.callerRewardPool());
+            collector.queueBridge();
+            vm.warp(block.timestamp + TIMELOCK);
+
+            address caller = address(uint160(0xCAFE + i));
+            vm.deal(caller, 0);
+            vm.prank(caller);
+            collector.executeBridge();
+
+            assertEq(caller.balance, rewardPerCall, "Wrong reward in round");
         }
+
+        assertEq(collector.callerRewardPool(), 0, "Pool should be empty");
+        assertEq(bridge.totalDeposited(), THRESHOLD * rounds, "Bridge total wrong");
     }
 
     // ─── Full lifecycle fuzz: queue → execute → re-queue → cancel → re-queue → execute ───

@@ -264,12 +264,13 @@ contract PriorityFeeCollectorTest is Test {
         collector.acceptGovernance();
     }
 
-    function test_CallerIncentive_ExecuteBridge() public {
-        // Set caller incentive to 10 bps (0.1%).
+    function test_CallerIncentive_FlatFee() public {
+        // Set reward to 1 POL per call and fund pool with 200 POL.
         vm.prank(governance);
-        collector.setCallerIncentiveBps(10);
+        collector.setCallerRewardPerCall(1 ether);
+        collector.fundCallerRewardPool{value: 200 ether}();
 
-        vm.deal(address(collector), THRESHOLD);
+        vm.deal(address(collector), THRESHOLD + 200 ether);
         collector.queueBridge();
         vm.warp(block.timestamp + TIMELOCK);
 
@@ -278,50 +279,77 @@ contract PriorityFeeCollectorTest is Test {
         vm.prank(caller);
         collector.executeBridge();
 
-        // Caller should receive 0.1% of 500k = 500 POL.
-        uint256 expectedReward = (THRESHOLD * 10) / 10_000;
-        assertEq(caller.balance, expectedReward, "Caller incentive wrong");
-
-        // Bridge should receive the rest.
-        assertEq(bridge.lastAmount(), THRESHOLD - expectedReward);
-    }
-
-    function test_CallerIncentive_Zero_ExecuteBridge() public {
-        // Default: no caller incentive.
-        assertEq(collector.callerIncentiveBps(), 0);
-
-        vm.deal(address(collector), THRESHOLD);
-        collector.queueBridge();
-        vm.warp(block.timestamp + TIMELOCK);
-
-        address caller = address(0xCAFE);
-        vm.deal(caller, 0);
-        vm.prank(caller);
-        collector.executeBridge();
-
-        // Caller should get nothing.
-        assertEq(caller.balance, 0);
-        // Bridge gets full amount.
+        // Caller gets flat 1 POL.
+        assertEq(caller.balance, 1 ether, "Caller reward wrong");
+        // Pool decreased.
+        assertEq(collector.callerRewardPool(), 199 ether);
+        // Bridge gets full THRESHOLD (reward comes from pool, not fees).
         assertEq(bridge.lastAmount(), THRESHOLD);
     }
 
-    function test_SetCallerIncentiveBps_OnlyGovernance() public {
-        vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
-        collector.setCallerIncentiveBps(10);
-
+    function test_CallerIncentive_EmptyPool() public {
+        // Set reward but don't fund pool.
         vm.prank(governance);
-        collector.setCallerIncentiveBps(10);
-        assertEq(collector.callerIncentiveBps(), 10);
+        collector.setCallerRewardPerCall(1 ether);
+
+        vm.deal(address(collector), THRESHOLD);
+        collector.queueBridge();
+        vm.warp(block.timestamp + TIMELOCK);
+
+        address caller = address(0xCAFE);
+        vm.deal(caller, 0);
+        vm.prank(caller);
+        collector.executeBridge();
+
+        // No reward paid, but bridge still works.
+        assertEq(caller.balance, 0);
+        assertEq(bridge.lastAmount(), THRESHOLD);
     }
 
-    function test_SetCallerIncentiveBps_MaxBound() public {
-        vm.prank(governance);
+    function test_CallerIncentive_PoolExcludedFromBridgeBalance() public {
+        // Fund pool with 200 POL. Contract has 200 POL total.
+        collector.fundCallerRewardPool{value: 200 ether}();
+
+        // Balance is 200 POL but bridgeable is 0 — should fail threshold.
+        vm.expectRevert();
+        collector.queueBridge();
+    }
+
+    function test_FundCallerRewardPool_RejectsZero() public {
         vm.expectRevert(PriorityFeeCollector.InvalidParameter.selector);
-        collector.setCallerIncentiveBps(101);
+        collector.fundCallerRewardPool{value: 0}();
+    }
+
+    function test_SetCallerRewardPerCall_OnlyGovernance() public {
+        vm.expectRevert(PriorityFeeCollector.OnlyGovernance.selector);
+        collector.setCallerRewardPerCall(1 ether);
 
         vm.prank(governance);
-        collector.setCallerIncentiveBps(100);
-        assertEq(collector.callerIncentiveBps(), 100);
+        collector.setCallerRewardPerCall(1 ether);
+        assertEq(collector.callerRewardPerCall(), 1 ether);
+    }
+
+    function test_CallerRewardPool_LastsManyCalls() public {
+        vm.prank(governance);
+        collector.setCallerRewardPerCall(1 ether);
+        collector.fundCallerRewardPool{value: 5 ether}();
+
+        uint256 t = block.timestamp;
+        for (uint256 i = 0; i < 5; i++) {
+            vm.deal(address(collector), THRESHOLD + collector.callerRewardPool());
+            collector.queueBridge();
+            t += TIMELOCK;
+            vm.warp(t);
+
+            address caller = address(uint160(0xCAFE + i));
+            vm.deal(caller, 0);
+            vm.prank(caller);
+            collector.executeBridge();
+
+            assertEq(caller.balance, 1 ether);
+        }
+
+        assertEq(collector.callerRewardPool(), 0);
     }
 
     function test_RevertZeroAddresses() public {
